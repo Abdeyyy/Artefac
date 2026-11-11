@@ -1,22 +1,16 @@
 import { useState } from 'react'
 import { Outlet, useNavigate, useLocation } from 'react-router-dom'
-import { motion } from 'framer-motion'
 import { 
-  LayoutDashboard, 
   TrafficCone, 
   Trash2, 
   Sun, 
   Cpu, 
-  Settings,
   Menu,
-  X,
   LogOut,
   Bell,
   User,
   Home,
-  Map,
-  BarChart3,
-  AlertCircle
+  Bot
 } from 'lucide-react'
 import { useAuth } from '../contexts/AuthContext'
 
@@ -31,9 +25,7 @@ const Sidebar = ({ isOpen, onClose }: { isOpen: boolean; onClose: () => void }) 
     { icon: Trash2, label: 'Waste', path: '/waste' },
     { icon: Sun, label: 'Lighting', path: '/lighting' },
     { icon: Cpu, label: 'Devices', path: '/devices' },
-    { icon: BarChart3, label: 'Analytics', path: '/analytics' },
-    { icon: AlertCircle, label: 'Alerts', path: '/alerts' },
-    { icon: Settings, label: 'Settings', path: '/settings' },
+    { icon: Bot, label: 'Chatbot', path: '/chatbot' },
   ]
 
   const handleLogout = () => {

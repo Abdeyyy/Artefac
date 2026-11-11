@@ -8,24 +8,7 @@ import TrafficIntelligence from './pages/TrafficIntelligence'
 import SmartWaste from './pages/SmartWaste'
 import SmartLighting from './pages/SmartLighting'
 import DeviceStatus from './pages/DeviceStatus'
-import Settings from './pages/Settings'
-
-// Placeholder pages for new routes
-const Analytics = () => (
-  <div className="space-y-6">
-    <h1 className="text-2xl font-bold text-dark-900">Analytics</h1>
-    <p className="text-gray-600">Advanced data analysis and insights</p>
-    <div className="card">Analytics dashboard coming soon...</div>
-  </div>
-)
-
-const Alerts = () => (
-  <div className="space-y-6">
-    <h1 className="text-2xl font-bold text-dark-900">Alerts</h1>
-    <p className="text-gray-600">System notifications and warnings</p>
-    <div className="card">Alerts management coming soon...</div>
-  </div>
-)
+import Chatbot from './pages/Chatbot'
 
 // Protected Route Component
 const ProtectedRoute = ({ children }: { children: React.ReactNode }) => {
@@ -53,13 +36,10 @@ function AppRoutes() {
         <Route path="waste" element={<SmartWaste />} />
         <Route path="lighting" element={<SmartLighting />} />
         <Route path="devices" element={<DeviceStatus />} />
-        <Route path="analytics" element={<Analytics />} />
-        <Route path="alerts" element={<Alerts />} />
-        <Route path="settings" element={<Settings />} />
+        <Route path="chatbot" element={<Chatbot />} />
       </Route>
       
       {/* Default route - redirect to login */}
-      <Route path="/" element={<Navigate to="/login" replace />} />
       <Route path="*" element={<Navigate to="/login" replace />} />
     </Routes>
   )

@@ -1,38 +1,38 @@
-import { motion } from 'framer-motion'
+import { useState, useEffect, useRef } from 'react'
 import { 
-  TrafficCone, 
-  Clock, 
-  TrendingUp, 
+  TrafficCone,
+  Clock,
+  TrendingUp,
   AlertCircle,
   Cpu,
   Zap,
   RefreshCw,
   ChevronRight,
   Car,
-  MapPin
+  MapPin,
+  Wifi,
+  WifiOff
 } from 'lucide-react'
 import { LineChart, Line, BarChart, Bar, ResponsiveContainer, XAxis, YAxis, CartesianGrid, Tooltip } from 'recharts'
+import { useSocketTelemetry } from '../utils/useSocketTelemetry'
 
-const trafficSensors = [
-  { id: 1, direction: 'Magelang', vehicles: 18, density: 'Medium', greenTime: 25, status: 'Active' },
-  { id: 2, direction: 'Purworejo', vehicles: 27, density: 'High', greenTime: 40, status: 'Active' },
-  { id: 3, direction: 'Yogyakarta', vehicles: 21, density: 'High', greenTime: 35, status: 'Active' },
-  { id: 4, direction: 'Artos', vehicles: 8, density: 'Low', greenTime: 15, status: 'Active' },
-  { id: 5, direction: 'North', vehicles: 14, density: 'Medium', greenTime: 20, status: 'Active' },
-  { id: 6, direction: 'South', vehicles: 19, density: 'Medium', greenTime: 25, status: 'Active' },
-  { id: 7, direction: 'East', vehicles: 12, density: 'Low', greenTime: 18, status: 'Inactive' },
-  { id: 8, direction: 'West', vehicles: 23, density: 'High', greenTime: 30, status: 'Active' },
-]
+interface HistoryPoint {
+  time: string
+  vehicles: number
+  density: number
+}
 
-const trafficHistory = [
-  { time: '08:00', vehicles: 45, density: 0.6 },
-  { time: '09:00', vehicles: 68, density: 0.8 },
-  { time: '10:00', vehicles: 52, density: 0.65 },
-  { time: '11:00', vehicles: 75, density: 0.9 },
-  { time: '12:00', vehicles: 90, density: 1.0 },
-  { time: '13:00', vehicles: 60, density: 0.7 },
-  { time: '14:00', vehicles: 48, density: 0.6 },
-]
+function getDensityLabel(val: number) {
+  if (val >= 70) return 'High'
+  if (val >= 30) return 'Medium'
+  return 'Low'
+}
+
+function getDensityColor(label: string) {
+  if (label === 'High') return 'badge-danger'
+  if (label === 'Medium') return 'badge-warning'
+  return 'badge-success'
+}
 
 const aiPredictions = [
   { minute: 5, predictedVehicles: 85, confidence: 88 },
@@ -43,6 +43,32 @@ const aiPredictions = [
 ]
 
 export default function TrafficIntelligence() {
+  const { telemetry, isConnected } = useSocketTelemetry()
+  const [history, setHistory] = useState<HistoryPoint[]>([])
+  const historyRef = useRef<HistoryPoint[]>([])
+
+  // Rolling history buffer (max 20 points)
+  useEffect(() => {
+    const total = Object.values(telemetry.lanes).reduce((a, b) => a + b, 0)
+    const avgDensity = total / 4
+    const now = new Date()
+    const label = `${now.getHours().toString().padStart(2, '0')}:${now.getMinutes().toString().padStart(2, '0')}:${now.getSeconds().toString().padStart(2, '0')}`
+    const next = [...historyRef.current, { time: label, vehicles: total, density: Math.round(avgDensity) }].slice(-20)
+    historyRef.current = next
+    setHistory([...next])
+  }, [telemetry])
+
+  const trafficSensors = [
+    { id: 1, laneKey: 'utara' as const, direction: 'Magelang', vehicles: telemetry.lanes.utara, density: getDensityLabel(telemetry.lanes.utara), greenTime: telemetry.activeLane === 'utara' ? telemetry.greenDuration : Math.round(telemetry.greenDuration * 0.6), status: 'Active' },
+    { id: 2, laneKey: 'timur' as const, direction: 'Purworejo', vehicles: telemetry.lanes.timur, density: getDensityLabel(telemetry.lanes.timur), greenTime: telemetry.activeLane === 'timur' ? telemetry.greenDuration : Math.round(telemetry.greenDuration * 0.7), status: 'Active' },
+    { id: 3, laneKey: 'selatan' as const, direction: 'Yogyakarta', vehicles: telemetry.lanes.selatan, density: getDensityLabel(telemetry.lanes.selatan), greenTime: telemetry.activeLane === 'selatan' ? telemetry.greenDuration : Math.round(telemetry.greenDuration * 0.8), status: 'Active' },
+    { id: 4, laneKey: 'barat' as const, direction: 'Artos', vehicles: telemetry.lanes.barat, density: getDensityLabel(telemetry.lanes.barat), greenTime: telemetry.activeLane === 'barat' ? telemetry.greenDuration : Math.round(telemetry.greenDuration * 0.5), status: 'Active' },
+  ]
+
+  const totalVehicles = Object.values(telemetry.lanes).reduce((a, b) => a + b, 0)
+  const peakDensity = Math.max(...Object.values(telemetry.lanes))
+  const activeLaneLabel = { utara: 'Magelang', selatan: 'Yogyakarta', timur: 'Purworejo', barat: 'Artos' }[telemetry.activeLane]
+
   return (
     <div className="space-y-6">
       {/* Header */}
@@ -52,6 +78,12 @@ export default function TrafficIntelligence() {
           <p className="text-gray-600">Real-time monitoring and AI-powered traffic control</p>
         </div>
         <div className="flex items-center space-x-3">
+          {/* Live badge */}
+          <div className={`flex items-center space-x-1.5 px-3 py-1.5 rounded-full text-xs font-semibold ${
+            isConnected ? 'bg-green-50 text-green-700 border border-green-200' : 'bg-gray-100 text-gray-500 border border-gray-200'
+          }`}>
+            {isConnected ? <><Wifi className="w-3.5 h-3.5" /><span>Live</span></> : <><WifiOff className="w-3.5 h-3.5" /><span>Offline</span></>}
+          </div>
           <button className="btn-secondary flex items-center space-x-2">
             <RefreshCw className="w-4 h-4" />
             <span>Refresh</span>
@@ -70,8 +102,8 @@ export default function TrafficIntelligence() {
             <div>
               <p className="text-sm text-gray-500 mb-1">Total Vehicles</p>
               <div className="flex items-baseline space-x-2">
-                <h3 className="text-2xl font-bold text-dark-900">1,248</h3>
-                <span className="text-sm text-green-600">+12%</span>
+                <h3 className="text-2xl font-bold text-dark-900">{totalVehicles}</h3>
+                {isConnected && <span className="text-sm text-green-600 animate-pulse">●</span>}
               </div>
             </div>
             <div className="p-3 rounded-lg bg-blue-50">
@@ -85,8 +117,8 @@ export default function TrafficIntelligence() {
             <div>
               <p className="text-sm text-gray-500 mb-1">Active Sensors</p>
               <div className="flex items-baseline space-x-2">
-                <h3 className="text-2xl font-bold text-dark-900">7/8</h3>
-                <span className="text-sm text-orange-600">1 inactive</span>
+                <h3 className="text-2xl font-bold text-dark-900">4/4</h3>
+                <span className="text-sm text-green-600">All online</span>
               </div>
             </div>
             <div className="p-3 rounded-lg bg-orange-50">
@@ -98,9 +130,9 @@ export default function TrafficIntelligence() {
         <div className="card">
           <div className="flex items-center justify-between">
             <div>
-              <p className="text-sm text-gray-500 mb-1">Avg Green Time</p>
+              <p className="text-sm text-gray-500 mb-1">Green Duration</p>
               <div className="flex items-baseline space-x-2">
-                <h3 className="text-2xl font-bold text-dark-900">26s</h3>
+                <h3 className="text-2xl font-bold text-dark-900">{telemetry.greenDuration}s</h3>
                 <span className="text-sm text-blue-600">Adaptive</span>
               </div>
             </div>
@@ -115,159 +147,55 @@ export default function TrafficIntelligence() {
             <div>
               <p className="text-sm text-gray-500 mb-1">Peak Density</p>
               <div className="flex items-baseline space-x-2">
-                <h3 className="text-2xl font-bold text-dark-900">92%</h3>
-                <span className="text-sm text-red-600">Heavy</span>
+                <h3 className="text-2xl font-bold text-dark-900">{peakDensity}%</h3>
+                <span className={`text-sm font-medium ${peakDensity >= 70 ? 'text-red-600' : peakDensity >= 30 ? 'text-orange-600' : 'text-green-600'}`}>
+                  {getDensityLabel(peakDensity)}
+                </span>
               </div>
             </div>
-            <div className="p-3 rounded-lg bg-red-50">
-              <AlertCircle className="w-6 h-6 text-red-600" />
+            <div className="p-3 rounded-lg bg-purple-50">
+              <TrendingUp className="w-6 h-6 text-purple-600" />
             </div>
           </div>
         </div>
       </div>
 
-      {/* Traffic Map */}
-      <div className="card">
-        <div className="flex items-center justify-between mb-6">
-          <div>
-            <h3 className="text-lg font-semibold text-dark-900">Simpang Artos Traffic Map</h3>
-            <p className="text-sm text-gray-500">Real-time vehicle detection and traffic flow</p>
-          </div>
-          <div className="flex items-center space-x-4">
-            <div className="flex items-center space-x-2">
-              <div className="w-3 h-3 rounded-full bg-green-500"></div>
-              <span className="text-sm text-gray-600">Low Density</span>
-            </div>
-            <div className="flex items-center space-x-2">
-              <div className="w-3 h-3 rounded-full bg-orange-500"></div>
-              <span className="text-sm text-gray-600">Medium</span>
-            </div>
-            <div className="flex items-center space-x-2">
-              <div className="w-3 h-3 rounded-full bg-red-500"></div>
-              <span className="text-sm text-gray-600">High</span>
-            </div>
-          </div>
-        </div>
-
-        {/* Traffic Map Visualization */}
-        <div className="h-96 bg-gradient-to-br from-blue-50 to-gray-50 rounded-lg border border-gray-200 overflow-hidden relative">
-          {/* Simplified Map */}
-          <div className="absolute inset-0 flex items-center justify-center">
-            <div className="relative w-80 h-80">
-              {/* Road Intersection */}
-              <div className="absolute inset-0 flex items-center justify-center">
-                {/* Vertical Road */}
-                <div className="absolute inset-x-0 top-0 h-full w-4 bg-gray-300 rounded-full mx-auto">
-                  <div className="absolute top-0 left-1/2 -translate-x-1/2 w-2 h-8 bg-blue-300 rounded-full animate-pulse"></div>
-                </div>
-                
-                {/* Horizontal Road */}
-                <div className="absolute inset-y-0 left-0 w-full h-4 bg-gray-300 rounded-full my-auto">
-                  <div className="absolute left-0 top-1/2 -translate-y-1/2 w-8 h-2 bg-blue-300 rounded-full animate-pulse"></div>
-                </div>
-
-                {/* Sensor Points */}
-                {trafficSensors.map((sensor, index) => {
-                  const positions = [
-                    { top: '20%', left: '50%' }, // North
-                    { top: '50%', left: '80%' }, // East
-                    { top: '80%', left: '50%' }, // South
-                    { top: '50%', left: '20%' }, // West
-                    { top: '35%', left: '35%' }, // NW
-                    { top: '35%', left: '65%' }, // NE
-                    { top: '65%', left: '65%' }, // SE
-                    { top: '65%', left: '35%' }, // SW
-                  ]
-
-                  const densityColor = sensor.density === 'High' ? 'bg-red-500' : 
-                                     sensor.density === 'Medium' ? 'bg-orange-500' : 
-                                     'bg-green-500'
-
-                  return (
-                    <div
-                      key={sensor.id}
-                      className={`absolute w-6 h-6 ${densityColor} rounded-full flex items-center justify-center -translate-x-1/2 -translate-y-1/2 border-2 border-white shadow-md`}
-                      style={positions[index]}
-                    >
-                      <MapPin className="w-3 h-3 text-white" />
-                    </div>
-                  )
-                })}
-              </div>
-            </div>
-          </div>
-
-          {/* Map Legend */}
-          <div className="absolute bottom-4 left-4 bg-white rounded-lg p-3 shadow-md border border-gray-200">
-            <div className="flex items-center space-x-4 text-xs">
-              <div className="flex items-center space-x-2">
-                <div className="w-3 h-3 rounded-full bg-green-500"></div>
-                <span className="text-gray-700">Low (&lt;30%)</span>
-              </div>
-              <div className="flex items-center space-x-2">
-                <div className="w-3 h-3 rounded-full bg-orange-500"></div>
-                <span className="text-gray-700">Medium (30-70%)</span>
-              </div>
-              <div className="flex items-center space-x-2">
-                <div className="w-3 h-3 rounded-full bg-red-500"></div>
-                <span className="text-gray-700">High (&gt;70%)</span>
-              </div>
-            </div>
-          </div>
+      {/* Active Lane Banner */}
+      <div className="bg-green-50 border border-green-200 rounded-xl px-6 py-4 flex items-center space-x-4">
+        <div className="w-4 h-4 rounded-full bg-green-500 animate-pulse"></div>
+        <div>
+          <span className="text-sm font-semibold text-green-800">Active Green Light: </span>
+          <span className="text-sm text-green-700">{activeLaneLabel} ({telemetry.activeLane})</span>
+          <span className="ml-4 text-sm text-green-600">Duration: {telemetry.greenDuration}s</span>
         </div>
       </div>
 
-      {/* Charts and Data */}
+      {/* Charts */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        {/* Traffic History Chart */}
+        {/* Live Traffic History */}
         <div className="card">
           <div className="flex items-center justify-between mb-6">
             <div>
-              <h3 className="text-lg font-semibold text-dark-900">Traffic Flow</h3>
-              <p className="text-sm text-gray-500">Hourly vehicle count and density</p>
+              <h3 className="text-lg font-semibold text-dark-900">Live Traffic History</h3>
+              <p className="text-sm text-gray-500">Rolling total vehicle density</p>
             </div>
-            <TrendingUp className="w-5 h-5 text-blue-600" />
+            {isConnected && <span className="text-xs text-green-600 font-medium animate-pulse">● Streaming</span>}
           </div>
           <div className="h-64">
             <ResponsiveContainer width="100%" height="100%">
-              <LineChart data={trafficHistory}>
+              <LineChart data={history}>
                 <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
-                <XAxis dataKey="time" stroke="#9ca3af" style={{ fontSize: '12px' }} />
+                <XAxis dataKey="time" stroke="#9ca3af" style={{ fontSize: '10px' }} tick={false} />
                 <YAxis stroke="#9ca3af" style={{ fontSize: '12px' }} />
-                <Tooltip 
-                  contentStyle={{ 
-                    backgroundColor: '#ffffff',
-                    border: '1px solid #e5e7eb',
-                    borderRadius: '8px',
-                    fontSize: '12px'
-                  }}
-                />
-                <Line 
-                  type="monotone" 
-                  dataKey="vehicles" 
-                  stroke="#3b82f6" 
-                  strokeWidth={2}
-                  dot={{ fill: '#3b82f6', r: 4 }}
-                />
-                <Line 
-                  type="monotone" 
-                  dataKey="density" 
-                  stroke="#10b981" 
-                  strokeWidth={2}
-                  dot={{ fill: '#10b981', r: 4 }}
-                />
+                <Tooltip contentStyle={{ backgroundColor: '#fff', border: '1px solid #e5e7eb', borderRadius: '8px', fontSize: '12px', color: '#111827' }} />
+                <Line type="monotone" dataKey="vehicles" stroke="#3b82f6" strokeWidth={2} dot={false} name="Total Vehicles" />
+                <Line type="monotone" dataKey="density" stroke="#10b981" strokeWidth={2} dot={false} name="Avg Density" />
               </LineChart>
             </ResponsiveContainer>
           </div>
-          <div className="mt-4 flex items-center space-x-4 text-sm">
-            <div className="flex items-center space-x-2">
-              <div className="w-3 h-3 rounded-full bg-blue-500"></div>
-              <span className="text-gray-600">Vehicle Count</span>
-            </div>
-            <div className="flex items-center space-x-2">
-              <div className="w-3 h-3 rounded-full bg-green-500"></div>
-              <span className="text-gray-600">Density Level</span>
-            </div>
+          <div className="mt-3 flex items-center space-x-4 text-xs text-gray-500">
+            <div className="flex items-center space-x-1"><div className="w-3 h-3 rounded-full bg-blue-500"></div><span>Total Vehicles</span></div>
+            <div className="flex items-center space-x-1"><div className="w-3 h-3 rounded-full bg-green-500"></div><span>Density Level</span></div>
           </div>
         </div>
 
@@ -286,19 +214,8 @@ export default function TrafficIntelligence() {
                 <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
                 <XAxis dataKey="minute" stroke="#9ca3af" style={{ fontSize: '12px' }} />
                 <YAxis stroke="#9ca3af" style={{ fontSize: '12px' }} />
-                <Tooltip 
-                  contentStyle={{ 
-                    backgroundColor: '#ffffff',
-                    border: '1px solid #e5e7eb',
-                    borderRadius: '8px',
-                    fontSize: '12px'
-                  }}
-                />
-                <Bar 
-                  dataKey="predictedVehicles" 
-                  fill="#f59e0b"
-                  radius={[4, 4, 0, 0]}
-                />
+                <Tooltip contentStyle={{ backgroundColor: '#fff', border: '1px solid #e5e7eb', borderRadius: '8px', fontSize: '12px' }} />
+                <Bar dataKey="predictedVehicles" fill="#f59e0b" radius={[4, 4, 0, 0]} />
               </BarChart>
             </ResponsiveContainer>
           </div>
@@ -313,7 +230,7 @@ export default function TrafficIntelligence() {
         <div className="flex items-center justify-between mb-6">
           <div>
             <h3 className="text-lg font-semibold text-dark-900">Sensor Monitoring</h3>
-            <p className="text-sm text-gray-500">8 infrared sensors real-time data</p>
+            <p className="text-sm text-gray-500">4 infrared sensors — real-time data</p>
           </div>
           <TrafficCone className="w-5 h-5 text-blue-600" />
         </div>
@@ -322,52 +239,57 @@ export default function TrafficIntelligence() {
             <thead>
               <tr className="border-b border-gray-200">
                 <th className="text-left py-3 px-4 text-sm font-medium text-gray-500">Direction</th>
-                <th className="text-left py-3 px-4 text-sm font-medium text-gray-500">Vehicles</th>
-                <th className="text-left py-3 px-4 text-sm font-medium text-gray-500">Density</th>
+                <th className="text-left py-3 px-4 text-sm font-medium text-gray-500">Density %</th>
+                <th className="text-left py-3 px-4 text-sm font-medium text-gray-500">Level</th>
                 <th className="text-left py-3 px-4 text-sm font-medium text-gray-500">Green Time</th>
-                <th className="text-left py-3 px-4 text-sm font-medium text-gray-500">Status</th>
+                <th className="text-left py-3 px-4 text-sm font-medium text-gray-500">Signal</th>
                 <th className="text-left py-3 px-4 text-sm font-medium text-gray-500">Actions</th>
               </tr>
             </thead>
             <tbody>
-              {trafficSensors.map((sensor) => (
-                <tr key={sensor.id} className="border-b border-gray-100 hover:bg-gray-50">
-                  <td className="py-3 px-4">
-                    <div className="flex items-center space-x-3">
-                      <MapPin className="w-4 h-4 text-gray-400" />
-                      <span className="font-medium text-dark-900">{sensor.direction}</span>
-                    </div>
-                  </td>
-                  <td className="py-3 px-4">
-                    <div className="text-dark-900 font-medium">{sensor.vehicles}</div>
-                  </td>
-                  <td className="py-3 px-4">
-                    <span className={`badge ${
-                      sensor.density === 'High' ? 'badge-danger' :
-                      sensor.density === 'Medium' ? 'badge-warning' :
-                      'badge-success'
-                    }`}>
-                      {sensor.density}
-                    </span>
-                  </td>
-                  <td className="py-3 px-4">
-                    <div className="text-dark-900 font-medium">{sensor.greenTime}s</div>
-                  </td>
-                  <td className="py-3 px-4">
-                    <span className={`badge ${
-                      sensor.status === 'Active' ? 'badge-success' : 'badge-danger'
-                    }`}>
-                      {sensor.status}
-                    </span>
-                  </td>
-                  <td className="py-3 px-4">
-                    <button className="text-blue-500 hover:text-blue-600 text-sm font-medium flex items-center space-x-1">
-                      <span>Details</span>
-                      <ChevronRight className="w-4 h-4" />
-                    </button>
-                  </td>
-                </tr>
-              ))}
+              {trafficSensors.map((sensor) => {
+                const isActive = sensor.laneKey === telemetry.activeLane
+                return (
+                  <tr key={sensor.id} className={`border-b border-gray-100 hover:bg-gray-50 transition-colors ${isActive ? 'bg-green-50/60' : ''}`}>
+                    <td className="py-3 px-4">
+                      <div className="flex items-center space-x-3">
+                        <MapPin className="w-4 h-4 text-gray-400" />
+                        <span className="font-medium text-dark-900">{sensor.direction}</span>
+                        {isActive && <span className="text-xs bg-green-100 text-green-700 px-2 py-0.5 rounded-full font-semibold">Active</span>}
+                      </div>
+                    </td>
+                    <td className="py-3 px-4">
+                      <div className="flex items-center space-x-2">
+                        <div className="w-16 h-2 rounded-full bg-gray-200">
+                          <div
+                            className={`h-2 rounded-full ${sensor.vehicles >= 70 ? 'bg-red-500' : sensor.vehicles >= 30 ? 'bg-orange-400' : 'bg-green-500'}`}
+                            style={{ width: `${sensor.vehicles}%` }}
+                          ></div>
+                        </div>
+                        <span className="text-dark-900 font-medium text-sm">{sensor.vehicles}%</span>
+                      </div>
+                    </td>
+                    <td className="py-3 px-4">
+                      <span className={`badge ${getDensityColor(sensor.density)}`}>{sensor.density}</span>
+                    </td>
+                    <td className="py-3 px-4">
+                      <div className="text-dark-900 font-medium">{sensor.greenTime}s</div>
+                    </td>
+                    <td className="py-3 px-4">
+                      <div className={`flex items-center space-x-1.5`}>
+                        <div className={`w-2.5 h-2.5 rounded-full ${isActive ? 'bg-green-500 animate-pulse' : 'bg-red-400'}`}></div>
+                        <span className={`text-sm font-medium ${isActive ? 'text-green-600' : 'text-red-500'}`}>{isActive ? 'Green' : 'Red'}</span>
+                      </div>
+                    </td>
+                    <td className="py-3 px-4">
+                      <button className="text-blue-500 hover:text-blue-600 text-sm font-medium flex items-center space-x-1">
+                        <span>Details</span>
+                        <ChevronRight className="w-4 h-4" />
+                      </button>
+                    </td>
+                  </tr>
+                )
+              })}
             </tbody>
           </table>
         </div>

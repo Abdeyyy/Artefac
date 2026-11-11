@@ -1,4 +1,3 @@
-import { motion } from 'framer-motion'
 import { 
   Cpu, 
   Wifi, 
@@ -7,11 +6,12 @@ import {
   RefreshCw,
   AlertCircle,
   ChevronRight,
-  Clock,
   Zap,
-  Server
+  Server,
+  WifiOff
 } from 'lucide-react'
-import { LineChart, Line, BarChart, Bar, Cell, ResponsiveContainer, XAxis, YAxis, CartesianGrid, Tooltip, AreaChart, Area } from 'recharts'
+import { BarChart, Bar, Cell, ResponsiveContainer, XAxis, YAxis, CartesianGrid, Tooltip, AreaChart, Area } from 'recharts'
+import { useSocketTelemetry } from '../utils/useSocketTelemetry'
 
 const devices = [
   { id: 'ESP32-01', name: 'Main Controller', type: 'ESP32', status: 'Online', lastSeen: 'Just now', battery: 85 },
@@ -24,7 +24,7 @@ const devices = [
   { id: 'IR-06', name: 'NW Sensor', type: 'IR Sensor', status: 'Online', lastSeen: '50 sec ago', battery: 82 },
   { id: 'IR-07', name: 'SE Sensor', type: 'IR Sensor', status: 'Online', lastSeen: '40 sec ago', battery: 76 },
   { id: 'IR-08', name: 'SW Sensor', type: 'IR Sensor', status: 'Online', lastSeen: '35 sec ago', battery: 91 },
-  { id: 'US-01', name: 'Waste Sensor', type: 'Ultrasonic Sensor', status: 'Online', lastSeen: '3 min ago', battery: 68 },
+  { id: 'US-01', name: 'Waste Sensor', type: 'Ultrasonic', status: 'Online', lastSeen: '3 min ago', battery: 68 },
   { id: 'LDR-01', name: 'Lighting Sensor', type: 'LDR Sensor', status: 'Online', lastSeen: '2 min ago', battery: 74 },
 ]
 
@@ -59,19 +59,40 @@ const systemMetrics = [
 ]
 
 export default function DeviceStatus() {
-  const onlineDevices = devices.filter(device => device.status === 'Online').length
-  const offlineDevices = devices.filter(device => device.status === 'Offline').length
-  const averageBattery = devices.filter(device => device.battery).reduce((sum, device) => sum + device.battery!, 0) / devices.filter(device => device.battery).length
+  const { isConnected, telemetry } = useSocketTelemetry()
+
+  const onlineDevices = devices.filter(d => d.status === 'Online').length
+  const offlineDevices = devices.filter(d => d.status === 'Offline').length
+  const withBattery = devices.filter(d => d.battery != null)
+  const averageBattery = withBattery.reduce((s, d) => s + (d.battery ?? 0), 0) / withBattery.length
+
+  // Add MQTT broker as a live row
+  const mqttDevice = {
+    id: 'MQTT-01',
+    name: 'Mosquitto Broker',
+    type: 'MQTT Broker',
+    status: isConnected ? 'Online' : 'Offline',
+    lastSeen: isConnected ? 'Just now' : 'Unknown',
+    battery: null as null | number,
+  }
+  const allDevices = [...devices, mqttDevice]
+  const totalOnline = allDevices.filter(d => d.status === 'Online').length
 
   return (
     <div className="space-y-6">
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-bold text-white mb-2">Device Status</h1>
-          <p className="text-dark-400">IoT device connectivity and health monitoring</p>
+          <h1 className="text-2xl font-bold text-dark-900 mb-2">Device Status</h1>
+          <p className="text-gray-500">IoT device connectivity and health monitoring</p>
         </div>
         <div className="flex items-center space-x-3">
+          {/* Live MQTT badge */}
+          <div className={`flex items-center space-x-1.5 px-3 py-1.5 rounded-full text-xs font-semibold border ${
+            isConnected ? 'bg-green-50 text-green-700 border-green-200' : 'bg-red-50 text-red-600 border-red-200'
+          }`}>
+            {isConnected ? <><Wifi className="w-3.5 h-3.5" /><span>MQTT Connected</span></> : <><WifiOff className="w-3.5 h-3.5" /><span>MQTT Offline</span></>}
+          </div>
           <button className="btn-secondary flex items-center space-x-2">
             <RefreshCw className="w-4 h-4" />
             <span>Refresh Status</span>
@@ -83,33 +104,17 @@ export default function DeviceStatus() {
         </div>
       </div>
 
-      {/* Stats Overview */}
+      {/* Stats */}
       <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
         <div className="card">
           <div className="flex items-center justify-between">
             <div>
-              <p className="text-sm text-dark-400 mb-1">Total Devices</p>
-              <h3 className="text-2xl font-bold text-white">{devices.length}</h3>
-              <p className="text-sm text-dark-400 mt-2">Connected IoT devices</p>
+              <p className="text-sm text-gray-500 mb-1">Total Devices</p>
+              <h3 className="text-2xl font-bold text-dark-900">{allDevices.length}</h3>
+              <p className="text-sm text-gray-500 mt-2">Connected IoT devices</p>
             </div>
-            <div className="p-3 rounded-lg bg-primary-500/10">
-              <Cpu className="w-6 h-6 text-primary-400" />
-            </div>
-          </div>
-        </div>
-
-        <div className="card">
-          <div className="flex items-center justify-between">
-            <div>
-              <p className="text-sm text-dark-400 mb-1">Online</p>
-              <div className="flex items-baseline space-x-2">
-                <h3 className="text-2xl font-bold text-white">{onlineDevices}</h3>
-                <span className="text-sm text-success-400">{((onlineDevices/devices.length)*100).toFixed(0)}%</span>
-              </div>
-              <p className="text-sm text-dark-400 mt-2">Active connections</p>
-            </div>
-            <div className="p-3 rounded-lg bg-success-500/10">
-              <Activity className="w-6 h-6 text-success-400" />
+            <div className="p-3 rounded-lg bg-blue-50">
+              <Cpu className="w-6 h-6 text-blue-600" />
             </div>
           </div>
         </div>
@@ -117,15 +122,15 @@ export default function DeviceStatus() {
         <div className="card">
           <div className="flex items-center justify-between">
             <div>
-              <p className="text-sm text-dark-400 mb-1">Offline</p>
+              <p className="text-sm text-gray-500 mb-1">Online</p>
               <div className="flex items-baseline space-x-2">
-                <h3 className="text-2xl font-bold text-white">{offlineDevices}</h3>
-                <span className="text-sm text-danger-400">Requires attention</span>
+                <h3 className="text-2xl font-bold text-dark-900">{totalOnline}</h3>
+                {isConnected && <span className="text-sm text-green-600 animate-pulse">●</span>}
               </div>
-              <p className="text-sm text-dark-400 mt-2">Needs troubleshooting</p>
+              <p className="text-sm text-gray-500 mt-2">{allDevices.length - totalOnline} offline</p>
             </div>
-            <div className="p-3 rounded-lg bg-danger-500/10">
-              <AlertCircle className="w-6 h-6 text-danger-400" />
+            <div className="p-3 rounded-lg bg-green-50">
+              <Wifi className="w-6 h-6 text-green-600" />
             </div>
           </div>
         </div>
@@ -133,221 +138,176 @@ export default function DeviceStatus() {
         <div className="card">
           <div className="flex items-center justify-between">
             <div>
-              <p className="text-sm text-dark-400 mb-1">Avg Battery</p>
+              <p className="text-sm text-gray-500 mb-1">Avg Battery</p>
               <div className="flex items-baseline space-x-2">
-                <h3 className="text-2xl font-bold text-white">{averageBattery.toFixed(0)}%</h3>
-                <span className="text-sm text-warning-400">Good</span>
-              </div>
-              <p className="text-sm text-dark-400 mt-2">Battery-powered devices</p>
-            </div>
-            <div className="p-3 rounded-lg bg-warning-500/10">
-              <Battery className="w-6 h-6 text-warning-400" />
-            </div>
-          </div>
-        </div>
-      </div>
-
-      {/* Device Grid */}
-      <div className="card">
-        <div className="flex items-center justify-between mb-6">
-          <div>
-            <h3 className="text-lg font-semibold text-white">Device Inventory</h3>
-            <p className="text-sm text-dark-400">All connected IoT devices and sensors</p>
-          </div>
-          <Cpu className="w-5 h-5 text-primary-400" />
-        </div>
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-          {devices.map((device) => (
-            <motion.div
-              key={device.id}
-              initial={{ opacity: 0, scale: 0.95 }}
-              animate={{ opacity: 1, scale: 1 }}
-              className={`p-4 rounded-lg border ${
-                device.status === 'Online' 
-                  ? 'bg-dark-800/50 border-success-500/30' 
-                  : 'bg-dark-800/30 border-danger-500/30'
-              }`}
-            >
-              <div className="flex items-start justify-between mb-3">
-                <div className="flex items-center space-x-3">
-                  <div className={`p-2 rounded-lg ${
-                    device.type === 'ESP32' ? 'bg-primary-500/20' :
-                    device.type === 'LoRa Gateway' ? 'bg-purple-500/20' :
-                    device.type.includes('IR') ? 'bg-success-500/20' :
-                    device.type.includes('Ultrasonic') ? 'bg-warning-500/20' :
-                    'bg-blue-500/20'
-                  }`}>
-                    {device.type === 'ESP32' ? (
-                      <Cpu className="w-4 h-4 text-primary-400" />
-                    ) : device.type === 'LoRa Gateway' ? (
-                      <Wifi className="w-4 h-4 text-purple-400" />
-                    ) : device.type.includes('IR') ? (
-                      <Activity className="w-4 h-4 text-success-400" />
-                    ) : device.type.includes('Ultrasonic') ? (
-                      <Zap className="w-4 h-4 text-warning-400" />
-                    ) : (
-                      <Server className="w-4 h-4 text-blue-400" />
-                    )}
-                  </div>
-                  <div>
-                    <h4 className="font-medium text-white">{device.name}</h4>
-                    <p className="text-xs text-dark-400">{device.id}</p>
-                  </div>
-                </div>
-                <span className={`badge ${
-                  device.status === 'Online' ? 'badge-success' : 'badge-danger'
-                }`}>
-                  {device.status}
+                <h3 className="text-2xl font-bold text-dark-900">{averageBattery.toFixed(0)}%</h3>
+                <span className={`text-sm font-semibold ${averageBattery > 70 ? 'text-green-600' : averageBattery > 40 ? 'text-orange-600' : 'text-red-600'}`}>
+                  {averageBattery > 70 ? 'Good' : averageBattery > 40 ? 'Low' : 'Critical'}
                 </span>
               </div>
+              <p className="text-sm text-gray-500 mt-2">Across sensor nodes</p>
+            </div>
+            <div className="p-3 rounded-lg bg-orange-50">
+              <Battery className="w-6 h-6 text-orange-600" />
+            </div>
+          </div>
+        </div>
 
-              <div className="space-y-3">
-                <div className="flex items-center justify-between text-sm">
-                  <span className="text-dark-400">Type</span>
-                  <span className="text-white font-medium">{device.type}</span>
-                </div>
-                
-                <div className="flex items-center justify-between text-sm">
-                  <span className="text-dark-400">Last Seen</span>
-                  <span className="text-white font-medium">{device.lastSeen}</span>
-                </div>
-
-                {device.battery !== null && (
-                  <div>
-                    <div className="flex justify-between text-sm mb-1">
-                      <span className="text-dark-400">Battery</span>
-                      <span className={`font-medium ${
-                        device.battery > 70 ? 'text-success-400' :
-                        device.battery > 40 ? 'text-warning-400' :
-                        'text-danger-400'
-                      }`}>
-                        {device.battery}%
-                      </span>
-                    </div>
-                    <div className="h-2 bg-dark-700 rounded-full overflow-hidden">
-                      <motion.div
-                        className={`h-full rounded-full ${
-                          device.battery > 70 ? 'bg-success-500' :
-                          device.battery > 40 ? 'bg-warning-500' :
-                          'bg-danger-500'
-                        }`}
-                        initial={{ width: 0 }}
-                        animate={{ width: `${device.battery}%` }}
-                        transition={{ duration: 1 }}
-                      />
-                    </div>
-                  </div>
-                )}
-
-                <div className="pt-3 border-t border-dark-800">
-                  <button className="text-primary-400 hover:text-primary-300 text-sm font-medium flex items-center space-x-1">
-                    <span>View Details</span>
-                    <ChevronRight className="w-4 h-4" />
-                  </button>
-                </div>
+        <div className="card">
+          <div className="flex items-center justify-between">
+            <div>
+              <p className="text-sm text-gray-500 mb-1">Data Rate</p>
+              <div className="flex items-baseline space-x-2">
+                <h3 className="text-2xl font-bold text-dark-900">{isConnected ? '~4s' : 'N/A'}</h3>
+                <span className={`text-sm font-semibold ${isConnected ? 'text-green-600' : 'text-gray-500'}`}>{isConnected ? 'Live' : 'Offline'}</span>
               </div>
-            </motion.div>
-          ))}
+              <p className="text-sm text-gray-500 mt-2">Socket.io update rate</p>
+            </div>
+            <div className="p-3 rounded-lg bg-purple-50">
+              <Activity className="w-6 h-6 text-purple-600" />
+            </div>
+          </div>
         </div>
       </div>
 
-      {/* Connectivity Analytics */}
+      {/* Charts */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        {/* Connectivity History */}
         <div className="card">
           <div className="flex items-center justify-between mb-6">
             <div>
-              <h3 className="text-lg font-semibold text-white">Connectivity History</h3>
-              <p className="text-sm text-dark-400">Device connection trends over time</p>
+              <h3 className="text-lg font-semibold text-dark-900">Connectivity History</h3>
+              <p className="text-sm text-gray-500">Devices online over time</p>
             </div>
-            <Wifi className="w-5 h-5 text-primary-400" />
+            <Server className="w-5 h-5 text-blue-600" />
           </div>
-          <div className="h-64">
+          <div className="h-56">
             <ResponsiveContainer width="100%" height="100%">
               <AreaChart data={connectivityHistory}>
-                <CartesianGrid strokeDasharray="3 3" stroke="#374151" />
-                <XAxis dataKey="time" stroke="#9ca3af" />
-                <YAxis stroke="#9ca3af" />
-                <Tooltip 
-                  contentStyle={{ 
-                    backgroundColor: '#1f2937',
-                    border: '1px solid #374151',
-                    borderRadius: '0.5rem'
-                  }}
-                />
-                <Area 
-                  type="monotone" 
-                  dataKey="connected" 
-                  stroke="#0ea5e9" 
-                  fill="url(#colorConnected)"
-                  strokeWidth={2}
-                />
                 <defs>
-                  <linearGradient id="colorConnected" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="5%" stopColor="#0ea5e9" stopOpacity={0.8}/>
-                    <stop offset="95%" stopColor="#0ea5e9" stopOpacity={0}/>
+                  <linearGradient id="colorConn" x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="5%" stopColor="#3b82f6" stopOpacity={0.3}/>
+                    <stop offset="95%" stopColor="#3b82f6" stopOpacity={0}/>
                   </linearGradient>
                 </defs>
+                <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
+                <XAxis dataKey="time" stroke="#9ca3af" style={{ fontSize: '12px' }} />
+                <YAxis stroke="#9ca3af" style={{ fontSize: '12px' }} domain={[0, 13]} />
+                <Tooltip contentStyle={{ backgroundColor: '#fff', border: '1px solid #e5e7eb', borderRadius: '8px', fontSize: '12px', color: '#111827' }} />
+                <Area type="monotone" dataKey="connected" stroke="#3b82f6" strokeWidth={2} fillOpacity={1} fill="url(#colorConn)" name="Devices" />
               </AreaChart>
             </ResponsiveContainer>
           </div>
-          <div className="mt-4 text-sm text-dark-400">
-            <p>Average connected devices: {((connectivityHistory.reduce((sum, item) => sum + item.connected, 0) / connectivityHistory.length).toFixed(1))}</p>
-          </div>
         </div>
 
+        {/* Battery Chart */}
         <div className="card">
           <div className="flex items-center justify-between mb-6">
             <div>
-              <h3 className="text-lg font-semibold text-white">Battery Health</h3>
-              <p className="text-sm text-dark-400">Battery levels across IR sensors</p>
+              <h3 className="text-lg font-semibold text-dark-900">Battery Levels</h3>
+              <p className="text-sm text-gray-500">IR sensor nodes</p>
             </div>
-            <Battery className="w-5 h-5 text-warning-400" />
+            <Battery className="w-5 h-5 text-orange-600" />
           </div>
-          <div className="h-64">
+          <div className="h-56">
             <ResponsiveContainer width="100%" height="100%">
               <BarChart data={batteryHistory}>
-                <CartesianGrid strokeDasharray="3 3" stroke="#374151" />
-                <XAxis dataKey="device" stroke="#9ca3af" />
-                <YAxis stroke="#9ca3af" />
-                <Tooltip 
-                  contentStyle={{ 
-                    backgroundColor: '#1f2937',
-                    border: '1px solid #374151',
-                    borderRadius: '0.5rem'
-                  }}
-                />
-                <Bar 
-                  dataKey="battery" 
-                  radius={[4, 4, 0, 0]}
-                >
+                <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
+                <XAxis dataKey="device" stroke="#9ca3af" style={{ fontSize: '11px' }} />
+                <YAxis stroke="#9ca3af" style={{ fontSize: '12px' }} domain={[0, 100]} />
+                <Tooltip contentStyle={{ backgroundColor: '#fff', border: '1px solid #e5e7eb', borderRadius: '8px', fontSize: '12px' }} />
+                <Bar dataKey="battery" radius={[4, 4, 0, 0]} name="Battery %">
                   {batteryHistory.map((entry, index) => (
-                    <Cell 
-                      key={`cell-${index}`} 
-                      fill={
-                        entry.battery > 70 ? '#10b981' :
-                        entry.battery > 40 ? '#f59e0b' :
-                        '#ef4444'
-                      } 
+                    <Cell
+                      key={index}
+                      fill={entry.battery > 70 ? '#10b981' : entry.battery > 40 ? '#f59e0b' : '#ef4444'}
                     />
                   ))}
                 </Bar>
               </BarChart>
             </ResponsiveContainer>
           </div>
-          <div className="mt-4 flex justify-center space-x-6">
-            <div className="flex items-center space-x-2">
-              <div className="w-3 h-3 rounded-full bg-success-500"></div>
-              <span className="text-sm text-dark-300">Good (&gt;70%)</span>
-            </div>
-            <div className="flex items-center space-x-2">
-              <div className="w-3 h-3 rounded-full bg-warning-500"></div>
-              <span className="text-sm text-dark-300">Low (40-70%)</span>
-            </div>
-            <div className="flex items-center space-x-2">
-              <div className="w-3 h-3 rounded-full bg-danger-500"></div>
-              <span className="text-sm text-dark-300">Critical (&lt;40%)</span>
-            </div>
+          <div className="mt-3 flex items-center space-x-4 text-xs text-gray-500">
+            <div className="flex items-center space-x-1"><div className="w-2.5 h-2.5 rounded-full bg-green-500"></div><span>Good (&gt;70%)</span></div>
+            <div className="flex items-center space-x-1"><div className="w-2.5 h-2.5 rounded-full bg-amber-500"></div><span>Low (40-70%)</span></div>
+            <div className="flex items-center space-x-1"><div className="w-2.5 h-2.5 rounded-full bg-red-500"></div><span>Critical (&lt;40%)</span></div>
           </div>
+        </div>
+      </div>
+
+      {/* Device Table (includes live MQTT row) */}
+      <div className="card">
+        <div className="flex items-center justify-between mb-6">
+          <div>
+            <h3 className="text-lg font-semibold text-dark-900">Device Registry</h3>
+            <p className="text-sm text-gray-500">{allDevices.length} devices — {totalOnline} online</p>
+          </div>
+          <Zap className="w-5 h-5 text-blue-600" />
+        </div>
+        <div className="overflow-x-auto">
+          <table className="w-full">
+            <thead>
+              <tr className="border-b border-gray-200">
+                <th className="text-left py-3 px-4 text-sm font-medium text-gray-500">Device ID</th>
+                <th className="text-left py-3 px-4 text-sm font-medium text-gray-500">Name</th>
+                <th className="text-left py-3 px-4 text-sm font-medium text-gray-500">Type</th>
+                <th className="text-left py-3 px-4 text-sm font-medium text-gray-500">Status</th>
+                <th className="text-left py-3 px-4 text-sm font-medium text-gray-500">Last Seen</th>
+                <th className="text-left py-3 px-4 text-sm font-medium text-gray-500">Battery</th>
+                <th className="text-left py-3 px-4 text-sm font-medium text-gray-500">Actions</th>
+              </tr>
+            </thead>
+            <tbody>
+              {allDevices.map((device) => (
+                <tr
+                  key={device.id}
+                  className={`border-b border-gray-100 hover:bg-gray-50 transition-colors ${
+                    device.id === 'MQTT-01' ? (isConnected ? 'bg-green-50/40' : 'bg-red-50/40') : ''
+                  }`}
+                >
+                  <td className="py-3 px-4">
+                    <div className="font-mono text-sm font-medium text-dark-900">{device.id}</div>
+                  </td>
+                  <td className="py-3 px-4">
+                    <div className="font-medium text-dark-900">{device.name}</div>
+                  </td>
+                  <td className="py-3 px-4">
+                    <div className="text-gray-600 text-sm">{device.type}</div>
+                  </td>
+                  <td className="py-3 px-4">
+                    <div className="flex items-center space-x-2">
+                      <div className={`w-2.5 h-2.5 rounded-full ${device.status === 'Online' ? 'bg-green-500 animate-pulse' : 'bg-red-400'}`}></div>
+                      <span className={`badge ${device.status === 'Online' ? 'badge-success' : 'badge-danger'}`}>{device.status}</span>
+                    </div>
+                  </td>
+                  <td className="py-3 px-4">
+                    <div className="text-gray-600 text-sm">{device.lastSeen}</div>
+                  </td>
+                  <td className="py-3 px-4">
+                    {device.battery != null ? (
+                      <div className="flex items-center space-x-2">
+                        <div className="w-12 h-2 rounded-full bg-gray-200">
+                          <div
+                            className={`h-2 rounded-full ${device.battery > 70 ? 'bg-green-500' : device.battery > 40 ? 'bg-orange-400' : 'bg-red-500'}`}
+                            style={{ width: `${device.battery}%` }}
+                          ></div>
+                        </div>
+                        <span className="text-sm text-dark-900 font-medium">{device.battery}%</span>
+                      </div>
+                    ) : (
+                      <span className="text-xs text-gray-400">N/A</span>
+                    )}
+                  </td>
+                  <td className="py-3 px-4">
+                    <button className="text-blue-500 hover:text-blue-600 text-sm font-medium flex items-center space-x-1">
+                      <span>Details</span>
+                      <ChevronRight className="w-4 h-4" />
+                    </button>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
         </div>
       </div>
 
@@ -355,20 +315,20 @@ export default function DeviceStatus() {
       <div className="card">
         <div className="flex items-center justify-between mb-6">
           <div>
-            <h3 className="text-lg font-semibold text-white">System Performance</h3>
-            <p className="text-sm text-dark-400">Network and communication metrics</p>
+            <h3 className="text-lg font-semibold text-dark-900">System Performance</h3>
+            <p className="text-sm text-gray-500">Network and communication metrics</p>
           </div>
-          <Activity className="w-5 h-5 text-success-400" />
+          <Activity className="w-5 h-5 text-green-600" />
         </div>
         <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4">
           {systemMetrics.map((metric) => (
-            <div key={metric.metric} className="p-4 rounded-lg bg-dark-800/50 border border-dark-700">
-              <p className="text-sm text-dark-400 mb-1">{metric.metric}</p>
-              <p className="text-xl font-bold text-white mb-2">{metric.value}</p>
-              <span className={`text-xs px-2 py-1 rounded-full ${
-                metric.status === 'excellent' ? 'bg-success-500/20 text-success-400' :
-                metric.status === 'good' ? 'bg-primary-500/20 text-primary-400' :
-                'bg-warning-500/20 text-warning-400'
+            <div key={metric.metric} className="p-4 rounded-xl bg-gray-50 border border-gray-200">
+              <p className="text-sm text-gray-500 mb-1">{metric.metric}</p>
+              <p className="text-xl font-bold text-dark-900 mb-2">{metric.value}</p>
+              <span className={`text-xs px-2.5 py-1 rounded-full font-medium ${
+                metric.status === 'excellent' ? 'bg-green-100 text-green-700' :
+                metric.status === 'good' ? 'bg-blue-100 text-blue-700' :
+                'bg-amber-100 text-amber-700'
               }`}>
                 {metric.status.charAt(0).toUpperCase() + metric.status.slice(1)}
               </span>
@@ -381,55 +341,57 @@ export default function DeviceStatus() {
       <div className="card">
         <div className="flex items-center justify-between mb-6">
           <div>
-            <h3 className="text-lg font-semibold text-white">Device Alerts</h3>
-            <p className="text-sm text-dark-400">Active warnings and notifications</p>
+            <h3 className="text-lg font-semibold text-dark-900">Device Alerts</h3>
+            <p className="text-sm text-gray-500">Active warnings and notifications</p>
           </div>
-          <AlertCircle className="w-5 h-5 text-danger-400" />
+          <AlertCircle className="w-5 h-5 text-red-600" />
         </div>
         <div className="space-y-4">
-          <div className="p-4 rounded-lg bg-danger-500/10 border border-danger-500/30">
+          {/* Dynamic MQTT status alert */}
+          <div className={`p-4 rounded-xl border ${isConnected ? 'bg-green-50/70 border-green-200' : 'bg-red-50/70 border-red-200'}`}>
             <div className="flex items-start space-x-3">
-              <AlertCircle className="w-5 h-5 text-danger-400 mt-0.5" />
+              {isConnected ? <Wifi className="w-5 h-5 text-green-600 mt-0.5" /> : <WifiOff className="w-5 h-5 text-red-600 mt-0.5" />}
               <div className="flex-1">
-                <h4 className="font-medium text-white mb-1">Device Offline - IR-04</h4>
-                <p className="text-sm text-dark-300">
+                <h4 className={`font-semibold mb-1 ${isConnected ? 'text-green-950' : 'text-red-950'}`}>
+                  {isConnected ? 'Backend Connected — Live Data Streaming' : 'Backend Offline — Showing Default State'}
+                </h4>
+                <p className={`text-sm ${isConnected ? 'text-green-800' : 'text-red-800'}`}>
+                  {isConnected
+                    ? `Receiving live telemetry via Socket.io. Last update: ${telemetry.lastUpdated ? new Date(telemetry.lastUpdated).toLocaleTimeString() : 'just now'}`
+                    : 'Could not connect to backend server at localhost:5000. Data shown is default fallback state.'}
+                </p>
+                <div className={`mt-2 text-xs font-medium ${isConnected ? 'text-green-700' : 'text-red-700'}`}>
+                  Socket.io → localhost:5000 • MQTT → Mosquitto :1883
+                </div>
+              </div>
+            </div>
+          </div>
+          <div className="p-4 rounded-xl bg-red-50/70 border border-red-200">
+            <div className="flex items-start space-x-3">
+              <AlertCircle className="w-5 h-5 text-red-600 mt-0.5" />
+              <div className="flex-1">
+                <h4 className="font-semibold text-red-950 mb-1">Device Offline — IR-04</h4>
+                <p className="text-sm text-red-800">
                   West Sensor (IR-04) has been offline for 2 hours. Battery level at 45%.
                   Please check physical connection and battery status.
                 </p>
-                <div className="mt-2 text-xs text-danger-400">
+                <div className="mt-2 text-xs font-medium text-red-700">
                   Device: IR-04 • Last seen: 2 hours ago • Priority: High
                 </div>
               </div>
             </div>
           </div>
-
-          <div className="p-4 rounded-lg bg-warning-500/10 border border-warning-500/30">
+          <div className="p-4 rounded-xl bg-amber-50/70 border border-amber-200">
             <div className="flex items-start space-x-3">
-              <AlertCircle className="w-5 h-5 text-warning-400 mt-0.5" />
+              <AlertCircle className="w-5 h-5 text-amber-600 mt-0.5" />
               <div className="flex-1">
-                <h4 className="font-medium text-white mb-1">Low Battery Warning</h4>
-                <p className="text-sm text-dark-300">
-                  IR-03 (78%) and IR-07 (76%) batteries are below 80%. 
+                <h4 className="font-semibold text-amber-950 mb-1">Low Battery Warning</h4>
+                <p className="text-sm text-amber-800">
+                  IR-03 (78%) and IR-07 (76%) batteries are below 80%.
                   Schedule battery replacement within 48 hours.
                 </p>
-                <div className="mt-2 text-xs text-warning-400">
+                <div className="mt-2 text-xs font-medium text-amber-700">
                   Affected: IR-03, IR-07 • Recommended: Replace batteries
-                </div>
-              </div>
-            </div>
-          </div>
-
-          <div className="p-4 rounded-lg bg-primary-500/10 border border-primary-500/30">
-            <div className="flex items-start space-x-3">
-              <AlertCircle className="w-5 h-5 text-primary-400 mt-0.5" />
-              <div className="flex-1">
-                <h4 className="font-medium text-white mb-1">Maintenance Schedule</h4>
-                <p className="text-sm text-dark-300">
-                  Next scheduled maintenance for all devices is in 7 days.
-                  Prepare replacement batteries and perform connectivity tests.
-                </p>
-                <div className="mt-2 text-xs text-primary-400">
-                  Schedule: Next week • Devices: All • Duration: 4 hours
                 </div>
               </div>
             </div>
