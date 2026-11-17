@@ -1,28 +1,16 @@
 import { useState, useEffect, useRef } from 'react'
-import { motion } from 'framer-motion'
 import { 
   Sun, 
   Moon, 
   Zap, 
   RefreshCw,
   TrendingUp,
-  Clock,
-  AlertCircle,
-  ChevronRight,
-  ToggleLeft,
-  ToggleRight,
-  Wifi,
-  WifiOff
+  ChevronRight
 } from 'lucide-react'
-import { AreaChart, Area, BarChart, Bar, Cell, ResponsiveContainer, XAxis, YAxis, CartesianGrid, Tooltip } from 'recharts'
+import { AreaChart, Area, BarChart, Bar, ResponsiveContainer, XAxis, YAxis, CartesianGrid, Tooltip } from 'recharts'
 import { useSocketTelemetry } from '../utils/useSocketTelemetry'
 
 interface IntensityPoint { time: string; intensity: number; pwm: number }
-
-const statusDistributionStatic = [
-  { name: 'ON', value: 80, color: '#f59e0b' },
-  { name: 'OFF', value: 20, color: '#64748b' },
-]
 
 const energyUsage = [
   { hour: '18-19', consumption: 45, cost: 3200 },
@@ -34,13 +22,13 @@ const energyUsage = [
 ]
 
 export default function SmartLighting() {
-  const [autoMode, setAutoMode] = useState(true)
-  const { telemetry, isConnected } = useSocketTelemetry()
+  const { telemetry, isConnected, refresh } = useSocketTelemetry()
   const [intensityHistory, setIntensityHistory] = useState<IntensityPoint[]>([])
+  const [isUpdatingPju, setIsUpdatingPju] = useState(false)
   const historyRef = useRef<IntensityPoint[]>([])
 
   useEffect(() => {
-    const lux = telemetry.lampPwm * 5
+    const lux = telemetry.rawSensors?.ldr ?? telemetry.trafficControl?.ldrRaw ?? telemetry.lampPwm * 5
     const now = new Date()
     const label = `${now.getHours().toString().padStart(2, '0')}:${now.getMinutes().toString().padStart(2, '0')}`
     const next = [...historyRef.current, { time: label, intensity: lux, pwm: telemetry.lampPwm }].slice(-15)
@@ -48,71 +36,77 @@ export default function SmartLighting() {
     setIntensityHistory([...next])
   }, [telemetry])
 
-  const lux = telemetry.lampPwm * 5
-  const lampIsOn = telemetry.lampPwm > 30
+  const ldrRaw = telemetry.rawSensors?.ldr ?? telemetry.trafficControl?.ldrRaw ?? 0
+  const pjuThreshold = telemetry.trafficControl?.pjuThreshold ?? 300
+  const valPju = telemetry.trafficControl?.outputs?.valPJU ?? (ldrRaw < pjuThreshold ? 1 : 0)
+  const isManual = telemetry.trafficControl?.isManualOverride ?? false
+  const autoMode = !isManual
+  const lux = ldrRaw
+  const lampIsOn = valPju === 1
   const totalConsumption = energyUsage.reduce((sum, h) => sum + h.consumption, 0)
 
+  const handlePjuControl = async (mode: 'AUTO' | 'ON' | 'OFF') => {
+    setIsUpdatingPju(true)
+    try {
+      const body =
+        mode === 'AUTO'
+          ? { mode: 'AUTO', reason: 'PJU kembali ke mode Otomatis (LDR)' }
+          : {
+              mode: 'MANUAL',
+              valPJU: mode === 'ON' ? 1 : 0,
+              reason: `PJU ${mode === 'ON' ? 'dinyalakan' : 'dimatikan'} manual dari Dashboard`
+            }
+      await fetch('http://localhost:5000/api/telemetry/traffic-override', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body)
+      })
+      await refresh()
+    } catch {
+      // Abaikan jika backend offline
+    } finally {
+      setIsUpdatingPju(false)
+    }
+  }
+
   const lightingSensors = [
-    { id: 1, name: 'Simpang Artos', intensity: lux, threshold: 300, status: lampIsOn ? 'ON' : 'OFF', mode: autoMode ? 'Auto' : 'Manual', lastUpdated: 'Just now' },
-    { id: 2, name: 'North Street', intensity: Math.round(lux * 0.9), threshold: 300, status: lampIsOn ? 'ON' : 'OFF', mode: 'Auto', lastUpdated: '1 min ago' },
-    { id: 3, name: 'East Gate', intensity: Math.round(lux * 1.1), threshold: 300, status: Math.round(lux * 1.1) < 300 ? 'ON' : 'OFF', mode: 'Auto', lastUpdated: '2 min ago' },
-    { id: 4, name: 'West Side', intensity: Math.round(lux * 0.8), threshold: 300, status: lampIsOn ? 'ON' : 'OFF', mode: autoMode ? 'Auto' : 'Manual', lastUpdated: '3 min ago' },
+    { id: 1, name: 'Lampu 1', intensity: lux, threshold: 300, status: lampIsOn ? 'MENYALA' : 'MATI', mode: autoMode ? 'Otomatis' : 'Manual', lastUpdated: isConnected ? 'Langsung' : 'Menunggu data' },
+    { id: 2, name: 'Lampu 2', intensity: lux, threshold: 300, status: lampIsOn ? 'MENYALA' : 'MATI', mode: autoMode ? 'Otomatis' : 'Manual', lastUpdated: isConnected ? 'Langsung' : 'Menunggu data' },
+    { id: 3, name: 'Lampu 3', intensity: lux, threshold: 300, status: lampIsOn ? 'MENYALA' : 'MATI', mode: autoMode ? 'Otomatis' : 'Manual', lastUpdated: isConnected ? 'Langsung' : 'Menunggu data' },
+    { id: 4, name: 'Lampu 4', intensity: lux, threshold: 300, status: lampIsOn ? 'MENYALA' : 'MATI', mode: autoMode ? 'Otomatis' : 'Manual', lastUpdated: isConnected ? 'Langsung' : 'Menunggu data' },
   ]
 
-  const lightsOn = lightingSensors.filter(s => s.status === 'ON').length
+  const lightsOn = lightingSensors.filter(s => s.status === 'MENYALA').length
   const averageIntensity = lightingSensors.reduce((s, x) => s + x.intensity, 0) / lightingSensors.length
-
-  const sdynamic = [
-    { name: 'ON', value: lightsOn * 25, color: '#f59e0b' },
-    { name: 'OFF', value: (lightingSensors.length - lightsOn) * 25, color: '#64748b' },
-  ]
 
   return (
     <div className="space-y-6">
       {/* Header */}
-      <div className="flex items-center justify-between">
+      <div className="flex items-center justify-between gap-4">
         <div>
-          <h1 className="text-2xl font-bold text-dark-900 mb-2">Smart Lighting Control</h1>
-          <p className="text-gray-500">LDR sensor monitoring and automated lighting management</p>
+          <h1 className="text-2xl font-bold text-dark-900 mb-1">Kendali Penerangan Pintar</h1>
+          <p className="text-gray-500 text-sm">Pemantauan sensor LDR dan pengelolaan lampu jalan otomatis</p>
         </div>
-        <div className="flex items-center space-x-3">
-          <div className={`flex items-center space-x-1.5 px-3 py-1.5 rounded-full text-xs font-semibold ${
-            isConnected ? 'bg-green-50 text-green-700 border border-green-200' : 'bg-gray-100 text-gray-500 border border-gray-200'
-          }`}>
-            {isConnected ? <><Wifi className="w-3.5 h-3.5" /><span>Live</span></> : <><WifiOff className="w-3.5 h-3.5" /><span>Offline</span></>}
-          </div>
-          <button className="btn-secondary flex items-center space-x-2">
-            <RefreshCw className="w-4 h-4" />
-            <span>Refresh Data</span>
-          </button>
-          <button
-            className={`flex items-center space-x-2 px-4 py-2.5 rounded-lg font-medium transition-all duration-300 ${
-              autoMode
-                ? 'bg-blue-600 hover:bg-blue-700 text-white'
-                : 'bg-gray-100 hover:bg-gray-200 text-dark-800 border border-gray-300'
-            }`}
-            onClick={() => setAutoMode(!autoMode)}
-          >
-            {autoMode ? (
-              <><ToggleRight className="w-5 h-5" /><span>Auto Mode</span></>
-            ) : (
-              <><ToggleLeft className="w-5 h-5" /><span>Manual Mode</span></>
-            )}
-          </button>
-        </div>
+        <button
+          onClick={refresh}
+          className="btn-secondary flex items-center space-x-1.5 text-xs px-3 py-1.5 shrink-0"
+        >
+          <RefreshCw className="w-3.5 h-3.5" />
+          <span>Segarkan</span>
+        </button>
       </div>
 
-      {/* Stats */}
+      {/* Statistik */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
         <div className="card">
           <div className="flex items-center justify-between">
             <div>
-              <p className="text-sm text-gray-500 mb-1">Average Intensity</p>
+              <p className="text-sm text-gray-500 mb-1">Intensitas Rata-rata</p>
               <div className="flex items-baseline space-x-2">
                 <h3 className="text-2xl font-bold text-dark-900">{averageIntensity.toFixed(0)} lux</h3>
                 {isConnected && <span className="text-sm text-green-600 animate-pulse">●</span>}
               </div>
-              <p className="text-sm text-gray-500 mt-2">Threshold: 300 lux</p>
+              <p className="text-sm text-gray-500 mt-2">Ambang batas: 300 lux</p>
             </div>
             <div className="p-3 rounded-lg bg-blue-50">
               <Sun className="w-6 h-6 text-blue-600" />
@@ -123,14 +117,45 @@ export default function SmartLighting() {
         <div className="card">
           <div className="flex items-center justify-between">
             <div>
-              <p className="text-sm text-gray-500 mb-1">Lights Active</p>
+              <p className="text-sm text-gray-500 mb-1">Lampu Aktif</p>
               <div className="flex items-baseline space-x-2">
                 <h3 className="text-2xl font-bold text-dark-900">{lightsOn}/{lightingSensors.length}</h3>
                 <span className={`text-sm font-semibold ${lampIsOn ? 'text-orange-600' : 'text-blue-600'}`}>
-                  {lampIsOn ? 'ON' : 'OFF'}
+                  {lampIsOn ? 'MENYALA' : 'MATI'}
                 </span>
               </div>
-              <p className="text-sm text-gray-500 mt-2">PWM: {telemetry.lampPwm}%</p>
+              <p className="text-xs text-gray-500 mt-1">
+                Lux: <span className="font-mono font-semibold text-dark-900">{ldrRaw}</span> • Ambang: <span className="font-semibold">{autoMode ? `< ${pjuThreshold} (Nyala/Mati)` : 'Manual'}</span>
+              </p>
+              <div className="flex items-center gap-1.5 mt-2">
+                <button
+                  disabled={isUpdatingPju}
+                  onClick={() => handlePjuControl('ON')}
+                  className={`px-2 py-0.5 rounded text-xs font-medium border ${
+                    isManual && valPju === 1 ? 'bg-orange-500 text-white border-orange-500' : 'bg-white text-gray-700 border-gray-200 hover:bg-gray-50'
+                  }`}
+                >
+                  Nyalakan
+                </button>
+                <button
+                  disabled={isUpdatingPju}
+                  onClick={() => handlePjuControl('OFF')}
+                  className={`px-2 py-0.5 rounded text-xs font-medium border ${
+                    isManual && valPju === 0 ? 'bg-gray-800 text-white border-gray-800' : 'bg-white text-gray-700 border-gray-200 hover:bg-gray-50'
+                  }`}
+                >
+                  Matikan
+                </button>
+                <button
+                  disabled={isUpdatingPju}
+                  onClick={() => handlePjuControl('AUTO')}
+                  className={`px-2 py-0.5 rounded text-xs font-medium border ${
+                    autoMode ? 'bg-blue-600 text-white border-blue-600' : 'bg-white text-gray-700 border-gray-200 hover:bg-gray-50'
+                  }`}
+                >
+                  Auto
+                </button>
+              </div>
             </div>
             <div className="p-3 rounded-lg bg-orange-50">
               {lampIsOn ? <Sun className="w-6 h-6 text-orange-500" /> : <Moon className="w-6 h-6 text-blue-500" />}
@@ -141,12 +166,12 @@ export default function SmartLighting() {
         <div className="card">
           <div className="flex items-center justify-between">
             <div>
-              <p className="text-sm text-gray-500 mb-1">Total Consumption</p>
+              <p className="text-sm text-gray-500 mb-1">Total Konsumsi</p>
               <div className="flex items-baseline space-x-2">
                 <h3 className="text-2xl font-bold text-dark-900">{totalConsumption} kWh</h3>
                 <span className="text-sm font-semibold text-green-600">-12%</span>
               </div>
-              <p className="text-sm text-gray-500 mt-2">Today's energy usage</p>
+              <p className="text-sm text-gray-500 mt-2">Pemakaian energi hari ini</p>
             </div>
             <div className="p-3 rounded-lg bg-green-50">
               <TrendingUp className="w-6 h-6 text-green-600" />
@@ -155,25 +180,16 @@ export default function SmartLighting() {
         </div>
       </div>
 
-      {/* Live PWM indicator */}
-      <div className={`rounded-xl px-6 py-4 flex items-center space-x-4 ${lampIsOn ? 'bg-orange-50 border border-orange-200' : 'bg-gray-50 border border-gray-200'}`}>
-        <div className={`w-4 h-4 rounded-full ${lampIsOn ? 'bg-orange-400 animate-pulse' : 'bg-gray-400'}`}></div>
-        <div>
-          <span className={`text-sm font-semibold ${lampIsOn ? 'text-orange-800' : 'text-gray-700'}`}>Lamp PWM: {telemetry.lampPwm}% </span>
-          <span className={`text-sm ${lampIsOn ? 'text-orange-700' : 'text-gray-600'}`}>≈ {lux} lux — {lampIsOn ? 'Lamp is ON' : 'Lamp is OFF'}</span>
-        </div>
-      </div>
-
-      {/* Charts */}
+      {/* Grafik */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        {/* Intensity History */}
+        {/* Riwayat Intensitas */}
         <div className="card">
           <div className="flex items-center justify-between mb-6">
             <div>
-              <h3 className="text-lg font-semibold text-dark-900">Live Intensity History</h3>
-              <p className="text-sm text-gray-500">Rolling lux readings (PWM × 5)</p>
+              <h3 className="text-lg font-semibold text-dark-900">Riwayat Intensitas Langsung</h3>
+              <p className="text-sm text-gray-500">Pembacaan lux bergulir (PWM × 5)</p>
             </div>
-            {isConnected && <span className="text-xs text-green-600 font-medium animate-pulse">● Streaming</span>}
+            {isConnected && <span className="text-xs text-green-600 font-medium animate-pulse">● Mengalir</span>}
           </div>
           <div className="h-64">
             <ResponsiveContainer width="100%" height="100%">
@@ -188,18 +204,18 @@ export default function SmartLighting() {
                 <XAxis dataKey="time" stroke="#6b7280" style={{ fontSize: '10px' }} tick={false} />
                 <YAxis stroke="#6b7280" style={{ fontSize: '12px' }} domain={[0, 500]} />
                 <Tooltip contentStyle={{ backgroundColor: '#fff', border: '1px solid #e5e7eb', borderRadius: '8px', fontSize: '12px', color: '#111827' }} />
-                <Area type="monotone" dataKey="intensity" stroke="#f59e0b" strokeWidth={2} fillOpacity={1} fill="url(#colorIntensity)" name="Intensity (lux)" />
+                <Area type="monotone" dataKey="intensity" stroke="#f59e0b" strokeWidth={2} fillOpacity={1} fill="url(#colorIntensity)" name="Intensitas (lux)" />
               </AreaChart>
             </ResponsiveContainer>
           </div>
         </div>
 
-        {/* Energy Usage */}
+        {/* Pemakaian Energi */}
         <div className="card">
           <div className="flex items-center justify-between mb-6">
             <div>
-              <h3 className="text-lg font-semibold text-dark-900">Energy Usage (Hourly)</h3>
-              <p className="text-sm text-gray-500">kWh consumption today</p>
+              <h3 className="text-lg font-semibold text-dark-900">Pemakaian Energi (Per Jam)</h3>
+              <p className="text-sm text-gray-500">Konsumsi kWh hari ini</p>
             </div>
             <Zap className="w-5 h-5 text-yellow-500" />
           </div>
@@ -217,12 +233,12 @@ export default function SmartLighting() {
         </div>
       </div>
 
-      {/* Sensor Table */}
+      {/* Tabel Sensor */}
       <div className="card">
         <div className="flex items-center justify-between mb-6">
           <div>
-            <h3 className="text-lg font-semibold text-dark-900">Lighting Sensors</h3>
-            <p className="text-sm text-gray-500">LDR sensor real-time readings</p>
+            <h3 className="text-lg font-semibold text-dark-900">Sensor Penerangan</h3>
+            <p className="text-sm text-gray-500">Pembacaan sensor LDR secara real-time (4 unit lampu)</p>
           </div>
           <Sun className="w-5 h-5 text-orange-500" />
         </div>
@@ -230,12 +246,12 @@ export default function SmartLighting() {
           <table className="w-full">
             <thead>
               <tr className="border-b border-gray-200">
-                <th className="text-left py-3 px-4 text-sm font-medium text-gray-500">Location</th>
-                <th className="text-left py-3 px-4 text-sm font-medium text-gray-500">Intensity</th>
-                <th className="text-left py-3 px-4 text-sm font-medium text-gray-500">Threshold</th>
+                <th className="text-left py-3 px-4 text-sm font-medium text-gray-500">Unit Lampu</th>
+                <th className="text-left py-3 px-4 text-sm font-medium text-gray-500">Intensitas</th>
+                <th className="text-left py-3 px-4 text-sm font-medium text-gray-500">Ambang Batas</th>
                 <th className="text-left py-3 px-4 text-sm font-medium text-gray-500">Status</th>
                 <th className="text-left py-3 px-4 text-sm font-medium text-gray-500">Mode</th>
-                <th className="text-left py-3 px-4 text-sm font-medium text-gray-500">Actions</th>
+                <th className="text-left py-3 px-4 text-sm font-medium text-gray-500">Aksi</th>
               </tr>
             </thead>
             <tbody>
@@ -253,16 +269,16 @@ export default function SmartLighting() {
                   </td>
                   <td className="py-3 px-4">
                     <div className="flex items-center space-x-2">
-                      <div className={`w-2.5 h-2.5 rounded-full ${sensor.status === 'ON' ? 'bg-orange-400 animate-pulse' : 'bg-gray-400'}`}></div>
-                      <span className={`badge ${sensor.status === 'ON' ? 'badge-warning' : 'badge-info'}`}>{sensor.status}</span>
+                      <div className={`w-2.5 h-2.5 rounded-full ${sensor.status === 'MENYALA' ? 'bg-orange-400 animate-pulse' : 'bg-gray-400'}`}></div>
+                      <span className={`badge ${sensor.status === 'MENYALA' ? 'badge-warning' : 'badge-info'}`}>{sensor.status}</span>
                     </div>
                   </td>
                   <td className="py-3 px-4">
-                    <span className={`badge ${sensor.mode === 'Auto' ? 'badge-success' : 'badge-warning'}`}>{sensor.mode}</span>
+                    <span className={`badge ${sensor.mode === 'Otomatis' ? 'badge-success' : 'badge-warning'}`}>{sensor.mode}</span>
                   </td>
                   <td className="py-3 px-4">
                     <button className="text-blue-500 hover:text-blue-600 text-sm font-medium flex items-center space-x-1">
-                      <span>Control</span>
+                      <span>Kendali</span>
                       <ChevronRight className="w-4 h-4" />
                     </button>
                   </td>
@@ -270,105 +286,6 @@ export default function SmartLighting() {
               ))}
             </tbody>
           </table>
-        </div>
-      </div>
-
-      {/* Schedule Table */}
-      <div className="card">
-        <div className="flex items-center justify-between mb-6">
-          <div>
-            <h3 className="text-lg font-semibold text-dark-900">Lighting Schedule</h3>
-            <p className="text-sm text-gray-500">Time-based automation rules</p>
-          </div>
-          <Clock className="w-5 h-5 text-blue-600" />
-        </div>
-        <div className="overflow-x-auto">
-          <table className="w-full">
-            <thead>
-              <tr className="border-b border-gray-200">
-                <th className="text-left py-3 px-4 text-sm font-medium text-gray-500">Time Range</th>
-                <th className="text-left py-3 px-4 text-sm font-medium text-gray-500">Action</th>
-                <th className="text-left py-3 px-4 text-sm font-medium text-gray-500">Threshold</th>
-                <th className="text-left py-3 px-4 text-sm font-medium text-gray-500">Mode</th>
-                <th className="text-left py-3 px-4 text-sm font-medium text-gray-500">Status</th>
-              </tr>
-            </thead>
-            <tbody>
-              <tr className="border-b border-gray-100 hover:bg-gray-50 transition-colors">
-                <td className="py-3 px-4"><div className="font-semibold text-dark-900">06:00 - 18:00</div></td>
-                <td className="py-3 px-4"><div className="text-gray-600 text-sm">Auto sensor-based control</div></td>
-                <td className="py-3 px-4"><div className="text-dark-900 font-medium text-sm">300 lux</div></td>
-                <td className="py-3 px-4"><span className="badge badge-success">Auto</span></td>
-                <td className="py-3 px-4"><span className="badge badge-warning">Active</span></td>
-              </tr>
-              <tr className="border-b border-gray-100 hover:bg-gray-50 transition-colors">
-                <td className="py-3 px-4"><div className="font-semibold text-dark-900">18:00 - 22:00</div></td>
-                <td className="py-3 px-4"><div className="text-gray-600 text-sm">Full brightness</div></td>
-                <td className="py-3 px-4"><div className="text-dark-900 font-medium text-sm">300 lux</div></td>
-                <td className="py-3 px-4"><span className="badge badge-success">Auto</span></td>
-                <td className="py-3 px-4"><span className="badge badge-warning">Active</span></td>
-              </tr>
-              <tr className="border-b border-gray-100 hover:bg-gray-50 transition-colors">
-                <td className="py-3 px-4"><div className="font-semibold text-dark-900">22:00 - 05:00</div></td>
-                <td className="py-3 px-4"><div className="text-gray-600 text-sm">Dim to 70% brightness</div></td>
-                <td className="py-3 px-4"><div className="text-dark-900 font-medium text-sm">200 lux</div></td>
-                <td className="py-3 px-4"><span className="badge badge-info">Scheduled</span></td>
-                <td className="py-3 px-4"><span className="badge badge-success">Enabled</span></td>
-              </tr>
-              <tr className="hover:bg-gray-50 transition-colors">
-                <td className="py-3 px-4"><div className="font-semibold text-dark-900">Emergency</div></td>
-                <td className="py-3 px-4"><div className="text-gray-600 text-sm">Manual override available</div></td>
-                <td className="py-3 px-4"><div className="text-dark-900 font-medium text-sm">N/A</div></td>
-                <td className="py-3 px-4"><span className="badge badge-danger">Manual</span></td>
-                <td className="py-3 px-4"><span className="badge badge-success">Ready</span></td>
-              </tr>
-            </tbody>
-          </table>
-        </div>
-      </div>
-
-      {/* Alerts */}
-      <div className="card">
-        <div className="flex items-center justify-between mb-6">
-          <div>
-            <h3 className="text-lg font-semibold text-dark-900">Lighting Alerts</h3>
-            <p className="text-sm text-gray-500">System notifications and recommendations</p>
-          </div>
-          <AlertCircle className="w-5 h-5 text-amber-600" />
-        </div>
-        <div className="space-y-4">
-          {/* Dynamic alert */}
-          <div className={`p-4 rounded-xl border ${lampIsOn ? 'bg-orange-50/70 border-orange-200' : 'bg-green-50/70 border-green-200'}`}>
-            <div className="flex items-start space-x-3">
-              <AlertCircle className={`w-5 h-5 mt-0.5 ${lampIsOn ? 'text-orange-600' : 'text-green-600'}`} />
-              <div className="flex-1">
-                <h4 className={`font-semibold mb-1 ${lampIsOn ? 'text-orange-950' : 'text-green-950'}`}>
-                  {lampIsOn ? 'Lamp Active' : 'Lamp Inactive'}
-                </h4>
-                <p className={`text-sm ${lampIsOn ? 'text-orange-800' : 'text-green-800'}`}>
-                  Current lamp PWM is {telemetry.lampPwm}% ≈ {lux} lux.
-                  {lampIsOn ? ` Lamp is ON. ${autoMode ? 'Auto mode active.' : 'Manual mode active.'}` : ' Lamp is OFF — below activation threshold.'}
-                </p>
-                <div className={`mt-2 text-xs font-medium ${lampIsOn ? 'text-orange-700' : 'text-green-700'}`}>
-                  PWM: {telemetry.lampPwm}% • Lux: {lux} • Mode: {autoMode ? 'Auto' : 'Manual'}
-                </div>
-              </div>
-            </div>
-          </div>
-          <div className="p-4 rounded-xl bg-green-50/70 border border-green-200">
-            <div className="flex items-start space-x-3">
-              <AlertCircle className="w-5 h-5 text-green-600 mt-0.5" />
-              <div className="flex-1">
-                <h4 className="font-semibold text-green-950 mb-1">Energy Saving Achieved</h4>
-                <p className="text-sm text-green-800">
-                  Smart lighting system saved 12% energy compared to yesterday through optimized scheduling.
-                </p>
-                <div className="mt-2 text-xs font-medium text-green-700">
-                  Savings: 45 kWh • Cost reduction: IDR 32,000
-                </div>
-              </div>
-            </div>
-          </div>
         </div>
       </div>
     </div>

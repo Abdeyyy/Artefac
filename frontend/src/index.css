@@ -60,3 +60,8 @@
     @apply text-blue-500 bg-blue-50;
   }
 }
+
+.leaflet-container {
+  z-index: 1;
+  font-family: inherit;
+}

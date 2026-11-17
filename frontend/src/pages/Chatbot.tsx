@@ -1,32 +1,62 @@
 import { useState, useRef, useEffect } from 'react'
-import { Bot, User, Send, Sparkles, RotateCcw } from 'lucide-react'
+import { Send, Sparkles, RotateCcw } from 'lucide-react'
 
 interface Message {
   id: string
   sender: 'user' | 'bot'
   text: string
   timestamp: string
+  modelsUsed?: string[]
 }
 
 const initialMessages: Message[] = [
   {
     id: '1',
     sender: 'bot',
-    text: 'Halo Operator! Saya adalah Asisten AI ARTEFAC untuk Simpang Artos. Anda dapat menanyakan kondisi lalu lintas, status tempat sampah, sensor penerangan, atau status perangkat IoT secara langsung.',
+    text: 'Halo! Saya **RADEN**, asisten AI lokal untuk Simpang Artos. Kamu bisa ngobrol bebas dengan saya, tanya kondisi jalan saat ini, prediksi arus 5–25 menit ke depan, penyebab kemacetan, atau cari rute alternatif tercepat.',
     timestamp: 'Baru saja'
   }
 ]
 
+const CHAT_STORAGE_KEY = 'artefac_chat_history'
+
 const suggestedPrompts = [
-  'Ringkasan kondisi Simpang Artos saat ini',
-  'Status traffic & rekomendasi lampu hijau',
-  'Berapa kapasitas tempat sampah sekarang?',
-  'Bagaimana status sensor penerangan LDR?',
-  'Cek konektivitas perangkat IoT & LoRa'
+  'Halo RADEN, kamu pakai model AI apa saja?',
+  'Prediksi arus lalu lintas 10 menit lagi',
+  'Kenapa bisa padat dan apa rekomendasinya?',
+  'Rute tercepat dari Magelang ke Yogyakarta',
+  'Ringkasan kondisi Simpang Artos saat ini'
 ]
 
+function loadStoredMessages(): Message[] {
+  try {
+    const raw = localStorage.getItem(CHAT_STORAGE_KEY)
+    if (!raw) return initialMessages
+    const parsed = JSON.parse(raw)
+    if (Array.isArray(parsed) && parsed.length > 0) {
+      return parsed
+    }
+  } catch {
+    // Abaikan jika JSON rusak
+  }
+  return initialMessages
+}
+
+function renderFormattedText(text: string) {
+  const parts = text.split(/(\*\*[^*]+\*\*|\*[^*\n]+\*)/g)
+  return parts.map((part, idx) => {
+    if (part.startsWith('**') && part.endsWith('**') && part.length > 4) {
+      return <strong key={idx} className="font-semibold text-dark-900">{part.slice(2, -2)}</strong>
+    }
+    if (part.startsWith('*') && part.endsWith('*') && part.length > 2) {
+      return <em key={idx} className="italic text-gray-700">{part.slice(1, -1)}</em>
+    }
+    return <span key={idx}>{part}</span>
+  })
+}
+
 export default function Chatbot() {
-  const [messages, setMessages] = useState<Message[]>(initialMessages)
+  const [messages, setMessages] = useState<Message[]>(loadStoredMessages)
   const [inputValue, setInputValue] = useState('')
   const [isTyping, setIsTyping] = useState(false)
   const messagesEndRef = useRef<HTMLDivElement>(null)
@@ -36,8 +66,17 @@ export default function Chatbot() {
   }
 
   useEffect(() => {
+    try {
+      localStorage.setItem(CHAT_STORAGE_KEY, JSON.stringify(messages))
+    } catch {
+      // Abaikan error kuota storage
+    }
     scrollToBottom()
-  }, [messages, isTyping])
+  }, [messages])
+
+  useEffect(() => {
+    if (isTyping) scrollToBottom()
+  }, [isTyping])
 
   const generateBotReply = (query: string): string => {
     const q = query.toLowerCase()
@@ -45,42 +84,42 @@ export default function Chatbot() {
     if (q.includes('ringkasan') || q.includes('semua') || q.includes('kondisi') || q.includes('overview')) {
       return `📊 **Ringkasan Sistem ARTEFAC (Simpang Artos)**:\n\n` +
         `• **Lalu Lintas**: Kepadatan tertinggi dari arah Purworejo (27 kend.) & Yogyakarta (21 kend.). Rekomendasi lampu hijau aktif 25–40 detik.\n` +
-        `• **Smart Waste**: Tempat sampah utama di Main Gate terisi 65% (Near Full, jarak 45 cm).\n` +
-        `• **Smart Lighting**: Intensitas LDR 320 lux, status lampu jalan **ON** (Mode Auto).\n` +
-        `• **Perangkat IoT**: 8 sensor IR online, ESP32 Controller normal, LoRa Gateway terkoneksi.`
+        `• **Tempat Sampah Pintar**: Tempat sampah utama di Gerbang Utama terisi 65% (Hampir Penuh, jarak 45 cm).\n` +
+        `• **Penerangan Pintar**: Intensitas LDR 320 lux, status lampu jalan **MENYALA** (Mode Otomatis).\n` +
+        `• **Perangkat IoT**: 8 sensor IR aktif, Kontroler ESP32 normal, Gateway LoRa terkoneksi.`
     }
 
     if (q.includes('traffic') || q.includes('lalu lintas') || q.includes('lampu hijau') || q.includes('kendaraan')) {
-      return `🚦 **Status Traffic Intelligence**:\n\n` +
-        `• **Magelang**: 18 Kendaraan | Kepadatan: Medium | Green Time: 25s\n` +
-        `• **Purworejo**: 27 Kendaraan | Kepadatan: High | Green Time: 40s (Prioritas)\n` +
-        `• **Yogyakarta**: 21 Kendaraan | Kepadatan: High | Green Time: 35s\n` +
-        `• **Artos**: 8 Kendaraan | Kepadatan: Low | Green Time: 15s\n\n` +
-        `💡 *AI Adaptive Control aktif mengoptimalkan durasi lampu hijau secara otomatis berdasarkan input 8 sensor IR.*`
+      return `🚦 **Status Lalu Lintas Adaptif**:\n\n` +
+        `• **Magelang**: 18 Kendaraan | Kepadatan: Sedang | Waktu Hijau: 25 detik\n` +
+        `• **Purworejo**: 27 Kendaraan | Kepadatan: Tinggi | Waktu Hijau: 40 detik (Prioritas)\n` +
+        `• **Yogyakarta**: 21 Kendaraan | Kepadatan: Tinggi | Waktu Hijau: 35 detik\n` +
+        `• **Artos**: 8 Kendaraan | Kepadatan: Rendah | Waktu Hijau: 15 detik\n\n` +
+        `💡 *Kendali Adaptif AI aktif mengoptimalkan durasi lampu hijau secara otomatis berdasarkan input sensor IR.*`
     }
 
     if (q.includes('sampah') || q.includes('waste') || q.includes('kapasitas')) {
-      return `🗑️ **Status Smart Waste (Sensor Ultrasonik)**:\n\n` +
-        `• **Main Gate**: 65% - Status: *Near Full* (Jarak: 45 cm)\n` +
-        `• **North Side**: 20% - Status: *Normal* (Jarak: 80 cm)\n` +
-        `• **East Gate**: 85% - Status: *Full* (Jarak: 30 cm) ⚠️ *Perlu pengosongan segera*\n` +
-        `• **South Gate**: 90% - Status: *Full* (Jarak: 25 cm) ⚠️ *Perlu pengosongan segera*`
+      return `🗑️ **Status Tempat Sampah Pintar (Sensor Ultrasonik)**:\n\n` +
+        `• **Gerbang Utama**: 65% - Status: *Hampir Penuh* (Jarak: 45 cm)\n` +
+        `• **Sisi Utara**: 20% - Status: *Normal* (Jarak: 80 cm)\n` +
+        `• **Gerbang Timur**: 85% - Status: *Penuh* (Jarak: 30 cm) ⚠️ *Perlu pengosongan segera*\n` +
+        `• **Gerbang Selatan**: 90% - Status: *Penuh* (Jarak: 25 cm) ⚠️ *Perlu pengosongan segera*`
     }
 
     if (q.includes('cahaya') || q.includes('lampu') || q.includes('ldr') || q.includes('lighting')) {
-      return `💡 **Status Smart Lighting (Sensor LDR)**:\n\n` +
-        `• **Intensitas Saat Ini**: 320 Lux (Threshold: 300 Lux)\n` +
-        `• **Status Lampu**: ON\n` +
-        `• **Mode**: Otomatis (Auto Control via ESP32)\n` +
-        `• **Kondisi Jalan**: Main Road, North Street, dan South Path aktif menyala.`
+      return `💡 **Status Penerangan Pintar (Sensor LDR)**:\n\n` +
+        `• **Intensitas Saat Ini**: 320 Lux (Ambang Batas: 300 Lux)\n` +
+        `• **Status Lampu**: MENYALA\n` +
+        `• **Mode**: Otomatis (Kendali Otomatis via ESP32)\n` +
+        `• **Kondisi Jalan**: Jalan Utama, Jalan Utara, dan Jalur Selatan aktif menyala.`
     }
 
     if (q.includes('lora') || q.includes('perangkat') || q.includes('sensor') || q.includes('iot') || q.includes('esp32')) {
       return `📡 **Status Konektivitas Perangkat IoT**:\n\n` +
-        `• **ESP32 Main Controller**: Online (Baterai: 85%)\n` +
-        `• **LoRa Gateway (868 MHz)**: Online (Latensi ~120ms)\n` +
-        `• **8× IR Vehicle Sensors**: 7 Online, 1 Offline (IR-04 West Sensor offline sejak 2 jam lalu)\n` +
-        `• **Sensor Ultrasonik & LDR**: Semua unit operasional normal.`
+        `• **Kontroler Utama ESP32**: Aktif (Baterai: 85%)\n` +
+        `• **Gateway LoRa (868 MHz)**: Aktif (Latensi ~120ms)\n` +
+        `• **8× Sensor Kendaraan IR**: 7 Aktif, 1 Terputus (Sensor Barat IR-04 terputus sejak 2 jam lalu)\n` +
+        `• **Sensor Ultrasonik & LDR**: Semua unit beroperasi normal.`
     }
 
     return `Terima kasih atas pertanyaannya. Sebagai asisten AI sistem ARTEFAC, saya siap membantu memantau data lalu lintas, status tempat sampah, penerangan otomatis, atau perangkat IoT Simpang Artos. Anda dapat memilih salah satu topik rekomendasi di atas.`
@@ -108,7 +147,7 @@ export default function Chatbot() {
       const res = await fetch('http://localhost:5000/api/chat', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ message: text }),
+        body: JSON.stringify({ message: text, sessionId: 'operator-web' }),
         signal: controller.signal
       })
       clearTimeout(timeoutId)
@@ -119,7 +158,8 @@ export default function Chatbot() {
           id: (Date.now() + 1).toString(),
           sender: 'bot',
           text: data.aiResponse,
-          timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+          timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+          modelsUsed: data.aiMeta?.modelsUsed
         }
         setMessages(prev => [...prev, botMsg])
         setIsTyping(false)
@@ -152,36 +192,19 @@ export default function Chatbot() {
 
   const handleResetChat = () => {
     setMessages(initialMessages)
+    try {
+      localStorage.removeItem(CHAT_STORAGE_KEY)
+    } catch {
+      // Abaikan error storage
+    }
   }
 
   return (
-    <div className="space-y-4 max-w-5xl mx-auto h-[calc(100vh-140px)] flex flex-col">
-      {/* Top Header */}
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-2xl font-bold text-dark-900 flex items-center gap-2">
-            <Bot className="w-7 h-7 text-blue-500" />
-            AI Chatbot Assistant
-          </h1>
-          <p className="text-sm text-gray-500">
-            Asisten cerdas pemantauan dan kendali IoT Simpang Artos
-          </p>
-        </div>
-
-        <button
-          onClick={handleResetChat}
-          className="btn-secondary flex items-center space-x-2 text-xs py-2 px-3"
-          title="Reset Percakapan"
-        >
-          <RotateCcw className="w-3.5 h-3.5" />
-          <span>Reset Chat</span>
-        </button>
-      </div>
-
+    <div className="w-full h-[calc(100vh-120px)] flex flex-col overflow-hidden">
       {/* Main Chat Box Container */}
-      <div className="card flex-1 flex flex-col p-0 overflow-hidden border border-gray-200">
+      <div className="card flex-1 flex flex-col p-0 overflow-hidden border border-gray-200 w-full">
         {/* Messages List Area */}
-        <div className="flex-1 p-6 overflow-y-auto space-y-4">
+        <div className="flex-1 p-6 overflow-y-auto overflow-x-hidden space-y-4">
           {messages.map((msg) => {
             const isUser = msg.sender === 'user'
             return (
@@ -190,25 +213,38 @@ export default function Chatbot() {
                 className={`flex items-start gap-3 ${isUser ? 'flex-row-reverse' : 'flex-row'}`}
               >
                 {/* Avatar */}
-                <div
-                  className={`w-9 h-9 rounded-full flex items-center justify-center shrink-0 ${
-                    isUser
-                      ? 'bg-blue-500 text-white'
-                      : 'bg-blue-100 text-blue-600 border border-blue-200'
-                  }`}
-                >
-                  {isUser ? <User className="w-4 h-4" /> : <Bot className="w-5 h-5" />}
-                </div>
+                {isUser ? (
+                  <div className="w-9 h-9 rounded-full bg-gray-200 border border-gray-300 flex items-center justify-center shrink-0 overflow-hidden">
+                    <svg
+                      viewBox="0 0 24 24"
+                      fill="currentColor"
+                      className="w-6 h-6 text-gray-500 translate-y-0.5"
+                      aria-label="Pengguna Anonim"
+                    >
+                      <path d="M12 12c2.761 0 5-2.239 5-5s-2.239-5-5-5-5 2.239-5 5 2.239 5 5 5zm0 2c-4.418 0-8 2.239-8 5v2h16v-2c0-2.761-3.582-5-8-5z" />
+                    </svg>
+                  </div>
+                ) : (
+                  <div className="w-9 h-9 rounded-full bg-white border border-gray-200 overflow-hidden shrink-0 shadow-2xs">
+                    <img
+                      src="/images/icon%20ai.png"
+                      alt="RADEN"
+                      className="w-full h-full object-cover"
+                    />
+                  </div>
+                )}
 
                 {/* Message Bubble */}
                 <div
-                  className={`max-w-[75%] rounded-2xl px-4 py-3 text-sm shadow-sm ${
+                  className={`max-w-[75%] break-words rounded-2xl px-4 py-3 text-sm shadow-sm ${
                     isUser
                       ? 'bg-blue-500 text-white rounded-tr-none'
                       : 'bg-white text-dark-900 border border-gray-200 rounded-tl-none whitespace-pre-line'
                   }`}
                 >
-                  <div>{msg.text}</div>
+                  <div className="leading-relaxed">
+                    {isUser ? msg.text : renderFormattedText(msg.text)}
+                  </div>
                   <div
                     className={`text-[10px] mt-1 text-right ${
                       isUser ? 'text-blue-100' : 'text-gray-400'
@@ -224,8 +260,12 @@ export default function Chatbot() {
           {/* Typing Indicator */}
           {isTyping && (
             <div className="flex items-start gap-3">
-              <div className="w-9 h-9 rounded-full bg-blue-100 text-blue-600 border border-blue-200 flex items-center justify-center shrink-0">
-                <Bot className="w-5 h-5" />
+              <div className="w-9 h-9 rounded-full bg-white border border-gray-200 overflow-hidden shrink-0">
+                <img
+                  src="/images/icon%20ai.png"
+                  alt="RADEN"
+                  className="w-full h-full object-cover"
+                />
               </div>
               <div className="bg-white border border-gray-200 rounded-2xl rounded-tl-none px-4 py-3 shadow-sm flex items-center space-x-1.5">
                 <span className="w-2 h-2 bg-blue-500 rounded-full animate-bounce [animation-delay:-0.3s]"></span>
@@ -239,14 +279,14 @@ export default function Chatbot() {
         </div>
 
         {/* Suggestion Chips */}
-        <div className="px-6 py-2.5 bg-gray-50 border-t border-gray-100 flex items-center gap-2 overflow-x-auto no-scrollbar">
+        <div className="px-6 py-2.5 bg-gray-50 border-t border-gray-100 flex flex-wrap items-center gap-2 overflow-x-hidden">
           <Sparkles className="w-4 h-4 text-blue-500 shrink-0" />
           <span className="text-xs text-gray-500 font-medium shrink-0">Saran:</span>
           {suggestedPrompts.map((prompt, idx) => (
             <button
               key={idx}
               onClick={() => handleSend(prompt)}
-              className="text-xs bg-white hover:bg-blue-50 text-dark-700 hover:text-blue-600 border border-gray-200 hover:border-blue-300 px-3 py-1.5 rounded-full transition-all shrink-0 whitespace-nowrap shadow-2xs"
+              className="text-xs bg-white hover:bg-blue-50 text-dark-700 hover:text-blue-600 border border-gray-200 hover:border-blue-300 px-3 py-1.5 rounded-full transition-all shadow-2xs"
             >
               {prompt}
             </button>
@@ -268,8 +308,17 @@ export default function Chatbot() {
               onClick={() => handleSend()}
               disabled={!inputValue.trim()}
               className="btn-primary flex items-center justify-center px-4 py-2.5 disabled:opacity-50 disabled:cursor-not-allowed"
+              title="Kirim Pesan"
             >
               <Send className="w-4 h-4" />
+            </button>
+            <button
+              onClick={handleResetChat}
+              className="w-10 h-10 rounded-full bg-white hover:bg-gray-100 text-gray-600 border border-gray-300 flex items-center justify-center shrink-0 transition-colors"
+              title="Reset Obrolan"
+              aria-label="Reset Obrolan"
+            >
+              <RotateCcw className="w-4 h-4" />
             </button>
           </div>
         </div>
