@@ -1,15 +1,3 @@
-/**
- * RADEN Pure AI Engine (Tanpa API Eksternal)
- * Menggabungkan:
- * 1. NLP Bahasa Indonesia + Memori Konteks Multi-Giliran
- * 2. Representasi Pengetahuan (Frame & Semantic Network)
- * 3. Decision Tree Classifier
- * 4. Algoritma Pencarian A*
- * 5. Expert System (Forward Chaining + Certainty Factor)
- * 6. Model Prediksi Arus Lalu Lintas (EMA + Regresi Linier)
- * 7. General Knowledge BM25 + Math Evaluator + Online Learning
- */
-
 import { DOMAIN_FRAMES } from './knowledgeBase.js';
 import { analyzeNLP } from './nlpProcessor.js';
 import {
@@ -93,8 +81,8 @@ function composeLaneReply(laneKey, state, questionType, seed) {
     const lead = isCongested
       ? `Iya, jalur ${frame.nama} lagi padat di **${density}%**`
       : isModerate
-      ? `Lumayan ramai tapi belum macet parah, ${frame.nama} ada di **${density}%**`
-      : `Tidak macet kok, arah ${frame.nama} masih lengang di **${density}%**`;
+        ? `Lumayan ramai tapi belum macet parah, ${frame.nama} ada di **${density}%**`
+        : `Tidak macet kok, arah ${frame.nama} masih lengang di **${density}%**`;
     return `${lead}. Lampu lalu lintasnya sekarang sedang **${isGreen ? `hijau (${state.greenDuration} detik)` : 'merah'}**.`;
   }
 
@@ -259,8 +247,8 @@ function composeReply({ nlp, state, prediction, decisionTree, expert, session })
     }
     const targetHorizon = entities.horizonMinutes
       ? prediction.forecasts.reduce((prev, curr) =>
-          Math.abs(curr.minutesAhead - entities.horizonMinutes) < Math.abs(prev.minutesAhead - entities.horizonMinutes) ? curr : prev
-        )
+        Math.abs(curr.minutesAhead - entities.horizonMinutes) < Math.abs(prev.minutesAhead - entities.horizonMinutes) ? curr : prev
+      )
       : prediction.forecasts[1];
     const laneKey = entities.matchedLane || decisionTree.busiestLane;
     const laneName = DOMAIN_FRAMES.lanes[laneKey]?.nama || laneKey;

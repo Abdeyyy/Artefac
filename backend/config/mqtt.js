@@ -20,7 +20,12 @@ export const initMQTT = (io) => {
     io,
     mqttClient: client,
     commandTopic,
-    dashboardStateProvider: getLatestStateWithPredictions
+    dashboardStateProvider: getLatestStateWithPredictions,
+    onStateChange: (status) => {
+      if (status.activeLane && status.activeLane !== 'transisi') {
+        updateState({ activeLane: status.activeLane, greenDuration: status.phaseTotalSeconds });
+      }
+    }
   });
 
   // Inisialisasi pemantau status perangkat berbasis Retained Message + Timeout Watchdog

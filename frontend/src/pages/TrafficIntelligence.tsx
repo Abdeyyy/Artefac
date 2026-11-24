@@ -59,10 +59,15 @@ export default function TrafficIntelligence() {
     setHistory([...next])
   }, [telemetry])
 
+  const isUsGreen =
+    telemetry.trafficControl?.activeCorridor === 'US' ||
+    telemetry.activeLane === 'utara' ||
+    telemetry.activeLane === 'selatan'
+
   const trafficSensors = [
-    { id: 1, laneKey: 'utara' as const, direction: 'Magelang', vehicles: telemetry.lanes.utara, density: getDensityLabel(telemetry.lanes.utara), greenTime: telemetry.activeLane === 'utara' ? telemetry.greenDuration : Math.round(telemetry.greenDuration * 0.6), status: 'Aktif' },
+    { id: 1, laneKey: 'utara' as const, direction: 'Magelang', vehicles: telemetry.lanes.utara, density: getDensityLabel(telemetry.lanes.utara), greenTime: isUsGreen ? telemetry.greenDuration : Math.round(telemetry.greenDuration * 0.6), status: 'Aktif' },
     { id: 2, laneKey: 'timur' as const, direction: 'Artos', vehicles: telemetry.lanes.timur, density: getDensityLabel(telemetry.lanes.timur), greenTime: telemetry.activeLane === 'timur' ? telemetry.greenDuration : Math.round(telemetry.greenDuration * 0.7), status: 'Aktif' },
-    { id: 3, laneKey: 'selatan' as const, direction: 'Yogyakarta', vehicles: telemetry.lanes.selatan, density: getDensityLabel(telemetry.lanes.selatan), greenTime: telemetry.activeLane === 'selatan' ? telemetry.greenDuration : Math.round(telemetry.greenDuration * 0.8), status: 'Aktif' },
+    { id: 3, laneKey: 'selatan' as const, direction: 'Yogyakarta', vehicles: telemetry.lanes.selatan, density: getDensityLabel(telemetry.lanes.selatan), greenTime: isUsGreen ? telemetry.greenDuration : Math.round(telemetry.greenDuration * 0.8), status: 'Aktif' },
     { id: 4, laneKey: 'barat' as const, direction: 'Purworejo', vehicles: telemetry.lanes.barat, density: getDensityLabel(telemetry.lanes.barat), greenTime: telemetry.activeLane === 'barat' ? telemetry.greenDuration : Math.round(telemetry.greenDuration * 0.5), status: 'Aktif' },
   ]
 

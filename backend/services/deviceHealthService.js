@@ -186,7 +186,7 @@ class DeviceHealthService {
         status: loraOnline ? 'Aktif' : 'Terputus',
         source: loraOnline ? 'Heartbeat LoRa' : 'Timeout / Terputus',
         retained: false,
-        reading: bit === 0 ? 'Kendaraan (0)' : 'Kosong (1)',
+        reading: bit === 1 ? 'Kendaraan (1)' : 'Kosong (0)',
         lastSeen: formatRelativeTime(this.lastTelemetryAt, now)
       };
     });

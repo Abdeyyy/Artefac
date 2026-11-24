@@ -126,7 +126,9 @@ export default function SimpangArtosMap({ telemetry }: SimpangArtosMapProps) {
     ;(['utara', 'selatan', 'timur', 'barat'] as LaneKey[]).forEach((lane) => {
       const seg = ROAD_SEGMENTS[lane]
       const density = telemetry.lanes[lane]
-      const isGreen = telemetry.activeLane === lane
+      const isGreen =
+        telemetry.activeLane === lane ||
+        (telemetry.trafficControl?.activeCorridor === 'US' && (lane === 'utara' || lane === 'selatan'))
       const { color, status } = getRoadColor(density)
 
       // Outline putih agar warna jalan terlihat jelas di atas peta

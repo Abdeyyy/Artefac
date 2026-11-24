@@ -59,10 +59,15 @@ export default function Dashboard() {
   const binColor = telemetry.binDensity >= 80 ? 'text-red-600' : telemetry.binDensity >= 50 ? 'text-orange-600' : 'text-green-600'
   const lampLabel = telemetry.lampPwm > 30 ? 'MENYALA' : 'MATI'
 
+  const isUsGreen =
+    telemetry.trafficControl?.activeCorridor === 'US' ||
+    telemetry.activeLane === 'utara' ||
+    telemetry.activeLane === 'selatan'
+
   const regionData = [
-    { region: 'Magelang (Utara)', vehicles: telemetry.lanes.utara, density: getDensityLabel(telemetry.lanes.utara), active: telemetry.activeLane === 'utara' ? 'Hijau' : 'Merah' },
+    { region: 'Magelang (Utara)', vehicles: telemetry.lanes.utara, density: getDensityLabel(telemetry.lanes.utara), active: isUsGreen ? 'Hijau' : 'Merah' },
     { region: 'Artos (Timur)', vehicles: telemetry.lanes.timur, density: getDensityLabel(telemetry.lanes.timur), active: telemetry.activeLane === 'timur' ? 'Hijau' : 'Merah' },
-    { region: 'Yogyakarta (Selatan)', vehicles: telemetry.lanes.selatan, density: getDensityLabel(telemetry.lanes.selatan), active: telemetry.activeLane === 'selatan' ? 'Hijau' : 'Merah' },
+    { region: 'Yogyakarta (Selatan)', vehicles: telemetry.lanes.selatan, density: getDensityLabel(telemetry.lanes.selatan), active: isUsGreen ? 'Hijau' : 'Merah' },
     { region: 'Purworejo (Barat)', vehicles: telemetry.lanes.barat, density: getDensityLabel(telemetry.lanes.barat), active: telemetry.activeLane === 'barat' ? 'Hijau' : 'Merah' },
   ]
 

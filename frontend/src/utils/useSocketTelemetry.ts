@@ -57,9 +57,18 @@ export interface DeviceHealthSummary {
 }
 
 export interface TrafficControlStatus {
-  phase: 'US_GREEN' | 'YELLOW_TO_TB' | 'TB_GREEN' | 'YELLOW_TO_US';
+  phase:
+    | 'US_GREEN'
+    | 'YELLOW_TO_TIMUR'
+    | 'TIMUR_GREEN'
+    | 'YELLOW_TO_BARAT'
+    | 'BARAT_GREEN'
+    | 'YELLOW_TO_US'
+    | 'YELLOW_TO_TB'
+    | 'TB_GREEN';
   phaseLabel: string;
   activeCorridor: string;
+  activeLane?: string;
   remainingSeconds: number;
   phaseTotalSeconds: number;
   isManualOverride: boolean;
@@ -68,6 +77,7 @@ export interface TrafficControlStatus {
     valT1: number;
     valT2: number;
     valT3: number;
+    valT4?: number;
     valPJU: number;
     pjuPwm1023: number;
   };

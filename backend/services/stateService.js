@@ -100,7 +100,7 @@ export const updateState = (newState) => {
     latestCityState.rawSensors.ldrHardwareRaw = Number(newState.ldr) || 0;
     if (newState.lampPwm === undefined) {
       const pju = computePjuState(normalizedLdr);
-      latestCityState.lampPwm = pju.valPJU === 1 ? 100 : 0;
+      latestCityState.lampPwm = Math.round((pju.pjuPwm1023 / 1023) * 100);
     }
   }
 
@@ -108,9 +108,10 @@ export const updateState = (newState) => {
     const distInCm = Math.max(0, Number(newState.distIn) || 0);
     latestCityState.rawSensors.distIn = distInCm;
     if (newState.binDensity === undefined) {
-      // Kapasitas penuh pada jarak <= 3 cm dari sensor; kosong pada >= 50 cm (dapat diatur via .env)
-      const fullCm = Number(process.env.BIN_FULL_CM) || 3;
-      const emptyCm = Number(process.env.BIN_EMPTY_CM) || 50;
+      // Kalibrasi skala kedalaman tong sampah miniatur:
+      // Kosong saat jarak >= 4 cm, Penuh saat sampah menumpuk hingga jarak <= 1.5 cm
+      const fullCm = Number(process.env.BIN_FULL_CM) || 1.5;
+      const emptyCm = Number(process.env.BIN_EMPTY_CM) || 4;
       const clamped = Math.min(emptyCm, Math.max(fullCm, distInCm));
       latestCityState.binDensity = Math.round(((emptyCm - clamped) / (emptyCm - fullCm)) * 100);
     }
@@ -120,8 +121,8 @@ export const updateState = (newState) => {
     const distOutCm = Math.max(0, Number(newState.distOut) || 0);
     latestCityState.rawSensors.distOut = distOutCm;
     if (!newState.binStatus) {
-      // Samakan dengan firmware ESP8266: tutup terbuka jika jarak tangan > 0 && < 5 cm
-      const openThresholdCm = Number(process.env.BIN_OPEN_DIST_CM) || 5;
+      // Samakan dengan firmware ESP8266: tutup terbuka jika jarak tangan > 0 && < 12 cm
+      const openThresholdCm = Number(process.env.BIN_OPEN_DIST_CM) || 12;
       latestCityState.binStatus = distOutCm > 0 && distOutCm < openThresholdCm ? 'OPEN' : 'CLOSED';
     }
   }

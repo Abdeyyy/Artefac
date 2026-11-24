@@ -18,26 +18,54 @@ export const TRAFFIC_PHASES = {
     valT1: 1,
     valT2: 0,
     valT3: 0,
+    valT4: 0,
     defaultDuration: TRAFFIC_CONSTANTS.STANDARD_GREEN_SECONDS,
-    corridor: 'US'
+    corridor: 'US',
+    activeLane: 'utara'
   },
-  YELLOW_TO_TB: {
-    key: 'YELLOW_TO_TB',
-    label: 'Transisi Kuning ke Timur-Barat',
+  YELLOW_TO_TIMUR: {
+    key: 'YELLOW_TO_TIMUR',
+    label: 'Transisi Kuning ke Timur (Artos)',
     valT1: 0,
     valT2: 0,
     valT3: 1,
+    valT4: 0,
     defaultDuration: TRAFFIC_CONSTANTS.YELLOW_SECONDS,
-    corridor: 'TRANSITION'
+    corridor: 'TRANSITION',
+    activeLane: 'transisi'
   },
-  TB_GREEN: {
-    key: 'TB_GREEN',
-    label: 'Koridor Timur-Barat Hijau',
+  TIMUR_GREEN: {
+    key: 'TIMUR_GREEN',
+    label: 'Lajur Timur (Artos) Hijau',
     valT1: 0,
     valT2: 1,
     valT3: 0,
+    valT4: 0,
     defaultDuration: TRAFFIC_CONSTANTS.STANDARD_GREEN_SECONDS,
-    corridor: 'TB'
+    corridor: 'TIMUR',
+    activeLane: 'timur'
+  },
+  YELLOW_TO_BARAT: {
+    key: 'YELLOW_TO_BARAT',
+    label: 'Transisi Kuning ke Barat (Purworejo)',
+    valT1: 0,
+    valT2: 0,
+    valT3: 1,
+    valT4: 0,
+    defaultDuration: TRAFFIC_CONSTANTS.YELLOW_SECONDS,
+    corridor: 'TRANSITION',
+    activeLane: 'transisi'
+  },
+  BARAT_GREEN: {
+    key: 'BARAT_GREEN',
+    label: 'Lajur Barat (Purworejo) Hijau',
+    valT1: 0,
+    valT2: 0,
+    valT3: 0,
+    valT4: 1,
+    defaultDuration: TRAFFIC_CONSTANTS.STANDARD_GREEN_SECONDS,
+    corridor: 'BARAT',
+    activeLane: 'barat'
   },
   YELLOW_TO_US: {
     key: 'YELLOW_TO_US',
@@ -45,8 +73,10 @@ export const TRAFFIC_PHASES = {
     valT1: 0,
     valT2: 0,
     valT3: 1,
+    valT4: 0,
     defaultDuration: TRAFFIC_CONSTANTS.YELLOW_SECONDS,
-    corridor: 'TRANSITION'
+    corridor: 'TRANSITION',
+    activeLane: 'transisi'
   }
 };
 
@@ -63,16 +93,21 @@ export function getDensityLevel(vehicleCount) {
 
 function calcSubsetPct(bits, indices) {
   if (!indices.length) return 0;
-  const occupied = indices.reduce((acc, idx) => acc + (bits[idx] === 0 ? 1 : 0), 0);
+  const occupied = indices.reduce((acc, idx) => acc + (bits[idx] === 1 ? 1 : 0), 0);
   return Math.round((occupied / indices.length) * 100);
 }
 
 /**
  * Parsing string 9 sensor IR dipisah titik dua (:).
- * Konvensi active-low: '0' = terdeteksi kendaraan, '1' = kosong.
+ * Standar intuitif: '1' = terdeteksi kendaraan, '0' = kosong.
  * Indeks 0..4 (5 sensor) = Koridor Utara-Selatan (U-S).
  * Indeks 5..8 (4 sensor) = Koridor Timur-Barat (T-B).
  * @param {string | number[]} irInput
+ */
+/**
+ * Parsing string 8 sensor IR dipisah titik dua (:).
+ * '1' = terdeteksi kendaraan, '0' = kosong.
+ * Indeks 0..1 = Utara (2), 2..3 = Selatan (2), 4..5 = Timur (2), 6..7 = Barat (2).
  */
 export function parseIrPayload(irInput) {
   let parts;
@@ -84,38 +119,46 @@ export function parseIrPayload(irInput) {
     parts = [];
   }
 
-  // Default bit = 1 (kosong) jika data tidak lengkap agar tidak menghasilkan deteksi palsu
-  const rawBits = Array.from({ length: 9 }, (_, i) => {
+  const rawBits = Array.from({ length: 8 }, (_, i) => {
     const raw = parts[i];
-    if (raw === undefined || raw === null || String(raw).trim() === '') return 1;
-    return Number(raw) === 0 ? 0 : 1;
+    if (raw === undefined || raw === null || String(raw).trim() === '') return 0;
+    return Number(raw) === 1 ? 1 : 0;
   });
 
-  const usBits = rawBits.slice(0, 5);
-  const tbBits = rawBits.slice(5, 9);
+  const usBits = rawBits.slice(0, 4);    // C0..C3 (Utara & Selatan)
+  const tbBits = rawBits.slice(4, 8);    // C4..C7 (Timur & Barat)
+  const timurBits = rawBits.slice(4, 6); // C4..C5 (Timur)
+  const baratBits = rawBits.slice(6, 8); // C6..C7 (Barat)
 
-  const usVehicles = usBits.filter((b) => b === 0).length;
-  const tbVehicles = tbBits.filter((b) => b === 0).length;
+  const usVehicles = usBits.filter((b) => b === 1).length;
+  const tbVehicles = tbBits.filter((b) => b === 1).length;
+  const timurVehicles = timurBits.filter((b) => b === 1).length;
+  const baratVehicles = baratBits.filter((b) => b === 1).length;
 
   return {
     rawBits,
     usVehicles,
     tbVehicles,
-    usTotalSensors: 5,
+    timurVehicles,
+    baratVehicles,
+    usTotalSensors: 4,
     tbTotalSensors: 4,
+    timurTotalSensors: 2,
+    baratTotalSensors: 2,
     usDensityLevel: getDensityLevel(usVehicles),
     tbDensityLevel: getDensityLevel(tbVehicles),
-    usDensityPct: Math.round((usVehicles / 5) * 100),
+    usDensityPct: Math.round((usVehicles / 4) * 100),
     tbDensityPct: Math.round((tbVehicles / 4) * 100),
+    timurDensityPct: Math.round((timurVehicles / 2) * 100),
+    baratDensityPct: Math.round((baratVehicles / 2) * 100),
     lanes: {
       utara: calcSubsetPct(rawBits, [0, 1]),
-      selatan: calcSubsetPct(rawBits, [2, 3, 4]),
-      timur: calcSubsetPct(rawBits, [5, 6]),
-      barat: calcSubsetPct(rawBits, [7, 8])
+      selatan: calcSubsetPct(rawBits, [2, 3]),
+      timur: calcSubsetPct(rawBits, [4, 5]),
+      barat: calcSubsetPct(rawBits, [6, 7])
     }
   };
 }
-
 /**
  * Membalik logika ADC LDR mikrokontroler jika hardware membaca nilai tinggi saat gelap:
  * Di mikrokontroler: gelap -> nilai ADC tinggi (0..1023)
@@ -130,18 +173,18 @@ export function normalizeLdrValue(rawLdr) {
 }
 
 /**
- * Menghitung status PJU dari nilai sensor LDR (mode biner: Nyala Terang Penuh / Mati).
+ * Menghitung status PJU adaptif dari nilai sensor LDR (Smart Dimming: Siang Mati, Sore Redup, Malam Terang Penuh).
  * @param {number} ldr
  * @param {number} threshold
  */
+/**
+ * Kontrol PJU Nyala-Mati Biasa (Digital On/Off):
+ * Menyala penuh (1023) jika LDR < threshold (300), dan mati (0) jika >= 300.
+ */
 export function computePjuState(ldr, threshold = TRAFFIC_CONSTANTS.LDR_PJU_THRESHOLD) {
-  const numericLdr = Math.max(0, Number(ldr) || 0);
-  const isDark = TRAFFIC_CONSTANTS.LDR_DARK_BELOW
-    ? numericLdr < threshold
-    : numericLdr > threshold;
-
+  const numericLdr = Math.max(0, Math.min(1023, Number(ldr) || 0));
+  const isDark = numericLdr < threshold;
   const valPJU = isDark ? 1 : 0;
-  // Biner murni: Terang Penuh (1023) saat nyala, 0 saat mati (tanpa redup-terang bertahap)
   const pjuPwm1023 = isDark ? 1023 : 0;
 
   return {
@@ -152,13 +195,19 @@ export function computePjuState(ldr, threshold = TRAFFIC_CONSTANTS.LDR_PJU_THRES
 }
 
 /**
- * Format tepat string perintah MQTT: CMD,<valT1>,<valT2>,<valT3>,<valPJU>
- * valPJU dikirim 1023 (Terang Penuh 100%) saat menyala dan 0 saat mati
- * agar analogWrite(PJU_PIN, valPJU) pada ESP8266 menyala terang maksimal.
+ * Format tepat string perintah MQTT: CMD,<valT1>,<valT2>,<valT3>,<valT4>,<valPJU>
+ * Opsi B: Mengirim 5 nilai sinyal (T1 U-S, T2 Timur, T3 Kuning, T4 Barat, PJU PWM)
+ * agar Tiang Timur dan Tiang Barat di maket fisik menyala bergantian secara fisik.
  */
-export function formatMqttCommand(valT1, valT2, valT3, valPJU) {
-  const pjuVal = Number(valPJU) ? 1023 : 0;
-  return `CMD,${Number(valT1) ? 1 : 0},${Number(valT2) ? 1 : 0},${Number(valT3) ? 1 : 0},${pjuVal}`;
+export function formatMqttCommand(valT1, valT2, valT3, valT4, valPJU) {
+  let t4 = valT4;
+  let pju = valPJU;
+  if (valPJU === undefined) {
+    pju = valT4;
+    t4 = 0;
+  }
+  const pjuVal = Math.max(0, Math.min(1023, Math.round(Number(pju) || 0)));
+  return `CMD,${Number(valT1) ? 1 : 0},${Number(valT2) ? 1 : 0},${Number(valT3) ? 1 : 0},${Number(t4) ? 1 : 0},${pjuVal}`;
 }
 
 export class AdaptiveTrafficController {
@@ -180,6 +229,7 @@ export class AdaptiveTrafficController {
     this.valT1 = 1;
     this.valT2 = 0;
     this.valT3 = 0;
+    this.valT4 = 0;
     this.valPJU = 0;
     this.pjuPwm1023 = 0;
     this.ldrRaw = 0;
@@ -254,12 +304,14 @@ export class AdaptiveTrafficController {
       const pju = computePjuState(normalizedLdr);
       this.ldrRaw = normalizedLdr;
       this.ldrHardwareRaw = Number(payload.ldr) || 0;
-      if (!this.isManualOverride && this.valPJU !== pju.valPJU) {
+      if (!this.isManualOverride) {
+        const oldPwm = this.pjuPwm1023;
         this.valPJU = pju.valPJU;
         this.pjuPwm1023 = pju.pjuPwm1023;
-        this.lastEventReason = `PJU otomatis ${this.valPJU === 1 ? 'MENYALA TERANG' : 'MATI'} (Lux: ${this.ldrRaw})`;
-      } else if (!this.isManualOverride) {
-        this.pjuPwm1023 = pju.pjuPwm1023;
+        if (Math.abs(oldPwm - this.pjuPwm1023) >= 50) {
+          const pct = Math.round((this.pjuPwm1023 / 1023) * 100);
+          this.lastEventReason = `PJU otomatis adaptif ${pct}% (Lux: ${this.ldrRaw}, PWM: ${this.pjuPwm1023})`;
+        }
       }
     }
 
@@ -275,7 +327,7 @@ export class AdaptiveTrafficController {
   }
 
   /**
-   * Perpanjangan otomatis jika koridor yang sedang hijau padat (>= 3 kendaraan), maksimal 1x per siklus.
+   * Perpanjangan otomatis jika koridor/lajur yang sedang hijau padat, maksimal 1x per siklus.
    */
   evaluateAdaptiveExtension() {
     if (this.hasExtendedThisCycle) return false;
@@ -289,12 +341,21 @@ export class AdaptiveTrafficController {
       return true;
     }
 
-    if (this.phase === 'TB_GREEN' && this.corridors.tbVehicles >= TRAFFIC_CONSTANTS.CONGESTION_THRESHOLD_VEHICLES) {
+    if (this.phase === 'TIMUR_GREEN' && (this.corridors.timurVehicles >= 1 || this.corridors.lanes.timur >= 50)) {
       const extra = TRAFFIC_CONSTANTS.EXTENDED_GREEN_SECONDS - TRAFFIC_CONSTANTS.STANDARD_GREEN_SECONDS;
       this.remainingSeconds += extra;
       this.phaseTotalSeconds = TRAFFIC_CONSTANTS.EXTENDED_GREEN_SECONDS;
       this.hasExtendedThisCycle = true;
-      this.lastEventReason = `Perpanjangan T-B ke 18 detik (${this.corridors.tbVehicles} kendaraan terdeteksi)`;
+      this.lastEventReason = `Perpanjangan Timur (Artos) ke 18 detik (${this.corridors.timurVehicles} kendaraan terdeteksi)`;
+      return true;
+    }
+
+    if (this.phase === 'BARAT_GREEN' && (this.corridors.baratVehicles >= 1 || this.corridors.lanes.barat >= 50)) {
+      const extra = TRAFFIC_CONSTANTS.EXTENDED_GREEN_SECONDS - TRAFFIC_CONSTANTS.STANDARD_GREEN_SECONDS;
+      this.remainingSeconds += extra;
+      this.phaseTotalSeconds = TRAFFIC_CONSTANTS.EXTENDED_GREEN_SECONDS;
+      this.hasExtendedThisCycle = true;
+      this.lastEventReason = `Perpanjangan Barat (Purworejo) ke 18 detik (${this.corridors.baratVehicles} kendaraan terdeteksi)`;
       return true;
     }
 
@@ -311,10 +372,24 @@ export class AdaptiveTrafficController {
     }
 
     // Evaluasi kondisi kosong saat fase hijau
-    if (this.phase === 'US_GREEN' || this.phase === 'TB_GREEN') {
-      const isUsGreen = this.phase === 'US_GREEN';
-      const activeVehicles = isUsGreen ? this.corridors.usVehicles : this.corridors.tbVehicles;
-      const oppositeVehicles = isUsGreen ? this.corridors.tbVehicles : this.corridors.usVehicles;
+    if (this.phase === 'US_GREEN' || this.phase === 'TIMUR_GREEN' || this.phase === 'BARAT_GREEN') {
+      let activeVehicles = 0;
+      let oppositeVehicles = 0;
+      let nextYellow = 'YELLOW_TO_US';
+
+      if (this.phase === 'US_GREEN') {
+        activeVehicles = this.corridors.usVehicles;
+        oppositeVehicles = (this.corridors.timurVehicles || 0) + (this.corridors.baratVehicles || 0);
+        nextYellow = 'YELLOW_TO_TIMUR';
+      } else if (this.phase === 'TIMUR_GREEN') {
+        activeVehicles = this.corridors.timurVehicles || 0;
+        oppositeVehicles = (this.corridors.baratVehicles || 0) + this.corridors.usVehicles;
+        nextYellow = 'YELLOW_TO_BARAT';
+      } else if (this.phase === 'BARAT_GREEN') {
+        activeVehicles = this.corridors.baratVehicles || 0;
+        oppositeVehicles = this.corridors.usVehicles + (this.corridors.timurVehicles || 0);
+        nextYellow = 'YELLOW_TO_US';
+      }
 
       if (activeVehicles === 0) {
         this.emptySeconds += 1;
@@ -324,8 +399,7 @@ export class AdaptiveTrafficController {
 
       // Potong otomatis jika jalur hijau kosong >= 4 detik & koridor lawan memiliki antrean >= 1
       if (this.emptySeconds >= TRAFFIC_CONSTANTS.EMPTY_CUTOFF_SECONDS && oppositeVehicles >= 1) {
-        const nextYellow = isUsGreen ? 'YELLOW_TO_TB' : 'YELLOW_TO_US';
-        this.lastEventReason = `Pemotongan hijau dini (${isUsGreen ? 'U-S' : 'T-B'} kosong ${this.emptySeconds}d, lawan antre ${oppositeVehicles})`;
+        this.lastEventReason = `Pemotongan hijau dini (${this.phase} kosong ${this.emptySeconds}d, lawan antre ${oppositeVehicles})`;
         this.transitionTo(nextYellow, this.lastEventReason);
         this.publishIfChanged();
         this.broadcastStatus();
@@ -346,9 +420,11 @@ export class AdaptiveTrafficController {
 
   advanceToNextPhase() {
     const order = {
-      US_GREEN: 'YELLOW_TO_TB',
-      YELLOW_TO_TB: 'TB_GREEN',
-      TB_GREEN: 'YELLOW_TO_US',
+      US_GREEN: 'YELLOW_TO_TIMUR',
+      YELLOW_TO_TIMUR: 'TIMUR_GREEN',
+      TIMUR_GREEN: 'YELLOW_TO_BARAT',
+      YELLOW_TO_BARAT: 'BARAT_GREEN',
+      BARAT_GREEN: 'YELLOW_TO_US',
       YELLOW_TO_US: 'US_GREEN'
     };
     const nextPhase = order[this.phase] || 'US_GREEN';
@@ -361,11 +437,17 @@ export class AdaptiveTrafficController {
     this.valT1 = config.valT1;
     this.valT2 = config.valT2;
     this.valT3 = config.valT3;
+    this.valT4 = config.valT4 !== undefined ? config.valT4 : 0;
     this.remainingSeconds = config.defaultDuration;
     this.phaseTotalSeconds = config.defaultDuration;
     this.hasExtendedThisCycle = false;
     this.emptySeconds = 0;
     this.lastEventReason = reason || `Transisi ke ${config.label}`;
+
+    // Sinkronkan activeLane ke stateService jika onStateChange terdaftar
+    if (this.onStateChange) {
+      this.onStateChange(this.getStatus());
+    }
 
     // Jika langsung padat saat mulai fase hijau, terapkan ekstensi 1x langsung
     if (!this.isManualOverride) {
@@ -394,10 +476,12 @@ export class AdaptiveTrafficController {
       this.valT1 = cfg.valT1;
       this.valT2 = cfg.valT2;
       this.valT3 = cfg.valT3;
+      this.valT4 = cfg.valT4 !== undefined ? cfg.valT4 : 0;
     } else {
       if (input.valT1 !== undefined) this.valT1 = Number(input.valT1) ? 1 : 0;
       if (input.valT2 !== undefined) this.valT2 = Number(input.valT2) ? 1 : 0;
       if (input.valT3 !== undefined) this.valT3 = Number(input.valT3) ? 1 : 0;
+      if (input.valT4 !== undefined) this.valT4 = Number(input.valT4) ? 1 : 0;
     }
 
     if (input.valPJU !== undefined) {
@@ -406,7 +490,7 @@ export class AdaptiveTrafficController {
       this.pjuPwm1023 = rawPju === 1 ? 1023 : Math.min(1023, rawPju);
     }
 
-    this.lastEventReason = input.reason || `Manual Override aktif (${formatMqttCommand(this.valT1, this.valT2, this.valT3, this.pjuPwm1023)})`;
+    this.lastEventReason = input.reason || `Manual Override aktif (${formatMqttCommand(this.valT1, this.valT2, this.valT3, this.valT4, this.pjuPwm1023)})`;
     this.publishIfChanged(true);
     this.broadcastStatus();
     return this.getStatus();
@@ -419,10 +503,12 @@ export class AdaptiveTrafficController {
     this.pjuPwm1023 = pju.pjuPwm1023;
 
     // Pastikan kembali ke fase siklus yang valid jika sebelumnya di-set bebas secara manual
-    if (this.valT1 === 1 && this.valT2 === 0 && this.valT3 === 0) {
+    if (this.valT1 === 1 && this.valT2 === 0 && this.valT3 === 0 && this.valT4 === 0) {
       this.transitionTo('US_GREEN', reason);
-    } else if (this.valT2 === 1 && this.valT1 === 0 && this.valT3 === 0) {
-      this.transitionTo('TB_GREEN', reason);
+    } else if (this.valT2 === 1 && this.valT1 === 0 && this.valT3 === 0 && this.valT4 === 0) {
+      this.transitionTo('TIMUR_GREEN', reason);
+    } else if (this.valT4 === 1 && this.valT1 === 0 && this.valT2 === 0 && this.valT3 === 0) {
+      this.transitionTo('BARAT_GREEN', reason);
     } else {
       this.transitionTo('US_GREEN', reason);
     }
@@ -433,10 +519,10 @@ export class AdaptiveTrafficController {
   }
 
   /**
-   * Publish string perintah persis CMD,<valT1>,<valT2>,<valT3>,<valPJU> ke Mosquitto saat ada perubahan.
+   * Publish string perintah persis CMD,<valT1>,<valT2>,<valT3>,<valT4>,<valPJU> ke Mosquitto saat ada perubahan.
    */
   publishIfChanged(force = false) {
-    const command = formatMqttCommand(this.valT1, this.valT2, this.valT3, this.valPJU);
+    const command = formatMqttCommand(this.valT1, this.valT2, this.valT3, this.valT4, this.pjuPwm1023);
     if (!force && command === this.lastPublishedCommand) {
       return false;
     }
@@ -479,6 +565,7 @@ export class AdaptiveTrafficController {
       phase: this.phase,
       phaseLabel: phaseMeta.label,
       activeCorridor: phaseMeta.corridor,
+      activeLane: phaseMeta.activeLane || 'utara',
       remainingSeconds: this.remainingSeconds,
       phaseTotalSeconds: this.phaseTotalSeconds,
       hasExtendedThisCycle: this.hasExtendedThisCycle,
@@ -489,6 +576,7 @@ export class AdaptiveTrafficController {
         valT1: this.valT1,
         valT2: this.valT2,
         valT3: this.valT3,
+        valT4: this.valT4,
         valPJU: this.valPJU,
         pjuPwm1023: this.pjuPwm1023
       },
@@ -501,6 +589,16 @@ export class AdaptiveTrafficController {
           totalSensors: this.corridors.usTotalSensors,
           densityLevel: this.corridors.usDensityLevel,
           densityPct: this.corridors.usDensityPct
+        },
+        TIMUR: {
+          vehicles: this.corridors.timurVehicles || 0,
+          totalSensors: this.corridors.timurTotalSensors || 2,
+          densityPct: this.corridors.timurDensityPct || this.corridors.lanes.timur
+        },
+        BARAT: {
+          vehicles: this.corridors.baratVehicles || 0,
+          totalSensors: this.corridors.baratTotalSensors || 2,
+          densityPct: this.corridors.baratDensityPct || this.corridors.lanes.barat
         },
         TB: {
           vehicles: this.corridors.tbVehicles,
